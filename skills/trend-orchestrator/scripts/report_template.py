@@ -118,3 +118,127 @@ def format_iron_rule_table(rules: list[dict]) -> str:
         for r in rules
     ]
     return "\n".join([header] + rows)
+
+
+def format_structure_section(
+    market_structure_result: str,
+    openmobius_result: str,
+    wyckoff_phase: str = "",
+) -> str:
+    """格式化形态识别/ICT 结构分析段落。
+
+    Args:
+        market_structure_result: market-structure 技能的分析结论
+        openmobius_result: OpenMobius 向量检索结果（含匹配度）
+        wyckoff_phase: Wyckoff 阶段判断
+
+    Returns:
+        Markdown 格式的形态分析段落
+    """
+    lines = []
+    if wyckoff_phase:
+        lines.append(f"**Wyckoff 阶段**：{wyckoff_phase}")
+        lines.append("")
+    lines.append("**SMC/ICT 结构 (market-structure)**：")
+    lines.append(market_structure_result)
+    lines.append("")
+    lines.append("**知识库检索 (OpenMobius)**：")
+    lines.append(openmobius_result)
+    return "\n".join(lines)
+
+
+def format_fundamental_section(
+    rootdata_summary: str,
+    team_score: str = "",
+    unlock_risk: str = "",
+    onchain_signals: str = "",
+) -> str:
+    """格式化基本面分析段落。
+
+    Args:
+        rootdata_summary: RootData 查询结果摘要
+        team_score: 团队评分/评价
+        unlock_risk: 解锁风险描述（有则填，无则空）
+        onchain_signals: 链上数据信号
+
+    Returns:
+        Markdown 格式的基本面分析段落
+    """
+    lines = ["**项目数据 (RootData)**：", rootdata_summary]
+    if team_score:
+        lines.append("")
+        lines.append(f"**团队评估**：{team_score}")
+    if unlock_risk:
+        lines.append("")
+        lines.append(f"[解锁风险] {unlock_risk}")
+    if onchain_signals:
+        lines.append("")
+        lines.append(f"**链上信号**：{onchain_signals}")
+    return "\n".join(lines)
+
+
+def format_news_section(
+    news_items: list[dict],
+) -> str:
+    """格式化消息面段落。
+
+    Args:
+        news_items: 新闻列表，每项含 source/title/date/summary/type
+                    type 为 "事实" 或 "解读"
+
+    Returns:
+        Markdown 格式的消息面段落
+    """
+    if not news_items:
+        return "近 7 天无重大消息"
+
+    lines = []
+    for item in news_items:
+        source = item.get("source", "未知来源")
+        date = item.get("date", "")
+        title = item.get("title", "")
+        summary = item.get("summary", "")
+        ntype = item.get("type", "事实")
+
+        lines.append(f"- [{ntype}] **{title}** ({source} {date})")
+        if summary:
+            lines.append(f"  {summary}")
+
+    return "\n".join(lines)
+
+
+def format_position_advice(
+    direction: str,
+    action: str,
+    key_levels: list[dict],
+    next_check: str = "",
+) -> str:
+    """格式化综合建议段落。
+
+    Args:
+        direction: 趋势方向（看多/震荡/看空）
+        action: 操作建议（观察/关注/DCA/回避）
+        key_levels: 关键观察位列表，每项含 price/type/description
+        next_check: 下一分析节点（如 "下周 MACD 是否金叉"）
+
+    Returns:
+        Markdown 格式的综合建议段落
+    """
+    lines = [
+        f"**长线趋势判断**：{direction}",
+        f"**操作建议**：{action}",
+        "",
+        "**关键观察位**：",
+    ]
+
+    for level in key_levels:
+        price = level.get("price", "")
+        ltype = level.get("type", "")
+        desc = level.get("description", "")
+        lines.append(f"- {ltype} @ {price}：{desc}")
+
+    if next_check:
+        lines.append("")
+        lines.append(f"**下一分析节点**：{next_check}")
+
+    return "\n".join(lines)
