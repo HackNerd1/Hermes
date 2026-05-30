@@ -19,7 +19,7 @@ argument-hint: "<交易对> [时间框架]"
 
 **核心原则：**
 - 只做分析与建议，不执行交易
-- 所有决策回归到 `references/long-term-rules.md`（长线铁律），不依赖"灵光一现"
+- 所有决策回归到 `${CLAUDE_SKILL_DIR}/references/long-term-rules.md`（长线铁律），不依赖"灵光一现"
 - 只读模式，不开通交易/提现权限
 - 周线/日线为主周期，过滤短线噪音
 
@@ -58,7 +58,7 @@ argument-hint: "<交易对> [时间框架]"
 - 优先用 demo 环境验证连通性
 - 超时 30 秒自动跳过，标注数据缺失
 
-详见 `references/dune-nansen-integration.md`。
+详见 `${CLAUDE_SKILL_DIR}/references/dune-nansen-integration.md`。
 
 ### 第三步：技术分析 → 调用 technical-indicator-pro
 
@@ -81,7 +81,7 @@ argument-hint: "<交易对> [时间框架]"
 - 周线成交量与价格背离检查
 - 日线关键位置成交量验证
 
-参考 `references/indicator-glossary.md` 了解各指标在长线场景下的使用方式。
+参考 `${CLAUDE_PLUGIN_ROOT}/skills/shared/references/indicator-glossary.md` 了解各指标在长线场景下的使用方式。
 
 ### 第四步：形态识别 → 调用 market-structure + openmobius
 
@@ -100,7 +100,7 @@ argument-hint: "<交易对> [时间框架]"
 - 检索不到匹配项时标注"无显著 ICT 结构"，不编造
 - 判断当前周线/日线处于 Wyckoff 的哪个阶段（吸筹/拉升/派发/下跌）
 
-详见 `references/openmobius-usage.md`。
+详见 `${CLAUDE_SKILL_DIR}/references/openmobius-usage.md`。
 
 ### 第五步：基本面分析 → 调用 RootData + 按需调用
 
@@ -118,10 +118,10 @@ argument-hint: "<交易对> [时间框架]"
 
 关键规则：
 - BTC/ETH 基本面从简（宏观环境为主）
-- 山寨币必须跑完整 `references/fundamental-checklist.md` 清单
+- 山寨币必须跑完整 `${CLAUDE_PLUGIN_ROOT}/skills/shared/references/fundamental-checklist.md` 清单
 - 有解锁事件的项目标注【解锁风险】及时间窗口
 
-详见 `references/rootdata-usage.md`。
+详见 `${CLAUDE_SKILL_DIR}/references/rootdata-usage.md`。
 
 ### 第六步：消息面搜索
 
@@ -137,18 +137,18 @@ argument-hint: "<交易对> [时间框架]"
 ### 第七步：综合判断 → 对照长线铁律
 
 **强制步骤：**
-1. 读取 `references/long-term-rules.md`
+1. 读取 `${CLAUDE_SKILL_DIR}/references/long-term-rules.md`
 2. 逐条对照当前市场状态是否触发铁律
 3. 如果触发风险条款，在报告中以【风险警示】标注
-4. 执行 `references/quant-model.md` 量化评分（v1.0+）
+4. 执行 `${CLAUDE_PLUGIN_ROOT}/skills/shared/references/quant-model.md` 量化评分（v1.0+）
 5. 给出趋势方向判断（看多/震荡/看空）+ 置信度（高/中/低）+ 综合评分（A-F）
 
-**仓位建议参考 `references/position-mgmt.md`。**
+**仓位建议参考 `${CLAUDE_PLUGIN_ROOT}/skills/shared/references/position-mgmt.md`。**
 
 ### 历史回顾（v1.0+）
 
 当用户请求"历史趋势回顾"或"对比上次分析"时：
-- 调用 `scripts/history_archive.py` → `find_historical_trend()` 查找历史报告
+- 调用 `${CLAUDE_PLUGIN_ROOT}/skills/shared/scripts/history_archive.py` → `find_historical_trend()` 查找历史报告
 - 调用 `format_history_summary()` 生成历史趋势表
 - 对比当前分析与历史判断，标注趋势变化
 
@@ -205,7 +205,7 @@ argument-hint: "<交易对> [时间框架]"
 
 当用户请求"扫描所有主流币"或"批量分析"时，按以下流程执行：
 
-1. 读取 `scripts/batch_scan.py` 中的默认关注列表
+1. 读取 `${CLAUDE_PLUGIN_ROOT}/skills/shared/scripts/batch_scan.py` 中的默认关注列表
 2. 调用 `generate_scan_queue()` 按优先级排序
 3. 对队列中每个币种依次执行标准 7 步流程（简化版——第五步仅检查解锁事件）
 4. 调用 `format_scan_summary()` 生成汇总表
@@ -215,7 +215,7 @@ argument-hint: "<交易对> [时间框架]"
 
 ### 定时调度（Cron）
 
-支持按固定节奏自动执行分析。详见 `references/cron-setup.md`。
+支持按固定节奏自动执行分析。详见 `${CLAUDE_PLUGIN_ROOT}/skills/shared/references/cron-setup.md`。
 
 调度节奏：
 - **周线主分析**：每周一 09:00 对 BTC/ETH 执行完整 7 步流程

@@ -1,6 +1,7 @@
 # Hermes 架构文档
 
 > OpenClaw 加密货币长线趋势分析系统 —— 基于主脑编排 + 社区技能组合 + 自定义知识库。
+> 本仓库为 OpenClaw 插件，包含多个交易分析技能及跨技能共享资源层。
 
 ---
 
@@ -98,6 +99,36 @@ description: 技能描述       # 最长 1024 字符，包含触发条件，Clau
 | 项目技能 | `<workspace>/.openclaw/skills/` | 单个项目（版本控制） |
 | ClawHub | `clawhub install` | 全局 |
 
+### 1.6 路径引用规范（关键）
+
+SKILL.md 中引用文件时使用标准变量，**禁止 `../` 相对路径遍历**：
+
+| 变量 | 用途 | 示例 |
+|------|------|------|
+| `${CLAUDE_SKILL_DIR}` | 引用当前技能**自身**目录下的文件 | `${CLAUDE_SKILL_DIR}/references/long-term-rules.md` |
+| `${CLAUDE_PLUGIN_ROOT}` | **跨技能**引用插件级共享文件 | `${CLAUDE_PLUGIN_ROOT}/skills/shared/references/indicator-glossary.md` |
+
+**反模式（禁止）：**
+
+```markdown
+# ✗ 相对路径遍历 — 目录重组即失效
+参考 ../../shared/references/indicator-glossary.md
+
+# ✗ 裸相对路径 — 不够健壮
+参考 references/long-term-rules.md
+```
+
+**正确写法：**
+
+```markdown
+# ✓ 技能内部引用
+参考 ${CLAUDE_SKILL_DIR}/references/long-term-rules.md
+
+# ✓ 跨技能共享引用
+参考 ${CLAUDE_PLUGIN_ROOT}/skills/shared/references/indicator-glossary.md
+参考 ${CLAUDE_PLUGIN_ROOT}/skills/shared/references/position-mgmt.md
+```
+
 ---
 
 ## 二、Skill 架构设计模式
@@ -125,19 +156,28 @@ SKILL.md (Claude-Native loop controller)
 
 ### 2.2 Worker Contract 模式
 
-每个 `reference/*.md` 是一个边界清晰的 worker contract：
+每个 `reference/*.md` 是一个边界清晰的 worker contract，按归属分为两层：
 
-- `long-term-rules.md` — 定义 5 大类 20+ 条铁律，第七步强制对照
-- `position-mgmt.md` — 定义仓位分级/止损/止盈规则
-- `fundamental-checklist.md` — 定义山寨币基本面分析清单
-- `indicator-glossary.md` — 定义各指标在长线场景下的使用方式
-- `openmobius-usage.md` — OpenMobius 检索参数与结果解读
-- `rootdata-usage.md` — RootData 数据覆盖与重点关注指标
-- `game-theory-usage.md` — 代币经济博弈分析维度
-- `onchain-analysis-usage.md` — 合约安全审计检查清单
-- `cron-setup.md` — 定时调度配置
-- `dune-nansen-integration.md` — 链上数据集成指南
-- `quant-model.md` — 5 维加权量化评分模型
+**技能特有（`skills/<name>/references/`）：**
+
+| 文件 | 归属 | 用途 |
+|------|------|------|
+| `long-term-rules.md` | trend-orchestrator | 5 大类 20+ 条长线铁律 |
+| `openmobius-usage.md` | trend-orchestrator | OpenMobius 检索参数与结果解读 |
+| `rootdata-usage.md` | trend-orchestrator | RootData 数据覆盖与重点关注指标 |
+| `game-theory-usage.md` | trend-orchestrator | 代币经济博弈分析维度 |
+| `onchain-analysis-usage.md` | trend-orchestrator | 合约安全审计检查清单 |
+| `dune-nansen-integration.md` | trend-orchestrator | 链上数据集成指南 |
+
+**跨技能共享（`skills/shared/references/`）：**
+
+| 文件 | 复用场景 | 用途 |
+|------|----------|------|
+| `indicator-glossary.md` | 长线 / 短线 / 选股 | 技术指标使用手册 |
+| `position-mgmt.md` | 长线 / 短线 | 仓位分级、止损/止盈规则 |
+| `fundamental-checklist.md` | 长线 / 选股 | 基本面分析清单框架 |
+| `quant-model.md` | 长线 / 短线 / 选股 | 5 维加权量化评分模型框架 |
+| `cron-setup.md` | 全部 | 定时调度配置 |
 
 ### 2.3 降级模式
 
@@ -161,52 +201,78 @@ RootData → WebSearch 替代
 Hermes/
 ├── README.md
 ├── docs/
-│   ├── architecture.md              # 本文档 — 架构与设计模式
-│   └── crypto-trend-trading-design.md  # 产品设计文档（技能选型、铁律设计、安全方案）
-└── skills/
-    └── trend-orchestrator/           # 主脑编排技能
-        ├── SKILL.md                  # YAML frontmatter + 7 步流程 body
-        ├── references/               # L3 按需加载（11 个参考文档）
-        │   ├── long-term-rules.md    # 长线交易铁律（Source of Truth）
-        │   ├── position-mgmt.md      # 仓位管理规则
-        │   ├── fundamental-checklist.md  # 基本面分析清单
-        │   ├── indicator-glossary.md     # 技术指标使用手册
-        │   ├── openmobius-usage.md       # [v0.2] OpenMobius 集成
-        │   ├── rootdata-usage.md         # [v0.2] RootData 集成
-        │   ├── game-theory-usage.md      # [v0.3] 代币经济分析
-        │   ├── onchain-analysis-usage.md # [v0.3] 合约安全审计
-        │   ├── cron-setup.md             # [v0.3] 定时调度
-        │   ├── dune-nansen-integration.md # [v1.0] 链上数据
-        │   └── quant-model.md            # [v1.0] 量化评分模型
-        └── scripts/                  # 确定性计算外置
-            ├── report_template.py    # 报告格式化 + 铁律表格 + 分段渲染
-            ├── batch_scan.py         # 多币种批量扫描 + 优先级排序
-            ├── history_archive.py    # 历史归档 + 索引构建 + 趋势查询
-            └── verify_deps.sh        # 依赖验证
+│   ├── architecture.md                  # 本文档 — 架构与设计模式
+│   └── crypto-trend-trading-design.md   # 产品设计文档（技能选型、铁律设计、安全方案）
+├── skills/
+│   ├── trend-orchestrator/              # 长线趋势分析（已实现）
+│   │   ├── SKILL.md                     # YAML frontmatter + 7 步流程 body
+│   │   ├── references/                  # L3 — 技能特有参考文档
+│   │   │   ├── long-term-rules.md       # 长线交易铁律（Source of Truth）
+│   │   │   ├── openmobius-usage.md      # [v0.2] OpenMobius 集成
+│   │   │   ├── rootdata-usage.md        # [v0.2] RootData 集成
+│   │   │   ├── game-theory-usage.md     # [v0.3] 代币经济分析
+│   │   │   ├── onchain-analysis-usage.md # [v0.3] 合约安全审计
+│   │   │   └── dune-nansen-integration.md # [v1.0] 链上数据
+│   │   └── scripts/
+│   │       └── verify_deps.sh           # 依赖验证
+│   ├── swing-trader/                    # 短线交易（规划中）
+│   │   ├── SKILL.md
+│   │   ├── references/
+│   │   │   └── swing-rules.md           # 短线铁律
+│   │   └── scripts/
+│   ├── stock-picker/                    # 选股（规划中）
+│   │   ├── SKILL.md
+│   │   ├── references/
+│   │   │   └── stock-checklist.md       # 选股清单
+│   │   └── scripts/
+│   └── shared/                          # ★ 跨技能共享层（无 SKILL.md，不作为独立技能）
+│       ├── references/                  # 共享参考文档
+│       │   ├── indicator-glossary.md    # 技术指标使用手册
+│       │   ├── position-mgmt.md         # 仓位管理规则
+│       │   ├── fundamental-checklist.md # 基本面分析清单框架
+│       │   ├── quant-model.md           # 量化评分模型框架
+│       │   └── cron-setup.md            # 定时调度配置
+│       └── scripts/                     # 共享确定性计算脚本
+│           ├── report_template.py       # 报告格式化 + 分段渲染
+│           ├── batch_scan.py            # 多币种批量扫描 + 优先级排序
+│           └── history_archive.py       # 历史归档 + 索引构建 + 趋势查询
+└── .claude/
+    └── settings.local.json
 ```
 
 ### 3.2 设计原则
 
-1. **Skill 自包含**：`trend-orchestrator` 独立携带自己的 `references/` 和 `scripts/`，可直接安装到 `~/.openclaw/skills/` 使用
-2. **Skill 即入口**：`SKILL.md` 是唯一的 Claude 入口点，通过 `description` 字段实现自动发现
-3. **确定性计算外置**：格式化、归档、批量队列等纯计算逻辑用 Python 脚本；推理决策保留在 SKILL.md 工作流中
+1. **技能自包含 + 共享层复用**：每个技能独立携带特有 `references/` 和 `scripts/`；通用资源抽离到 `skills/shared/`，通过 `${CLAUDE_PLUGIN_ROOT}` 跨技能引用
+2. **Skill 即入口**：每个 `SKILL.md` 是唯一的 Claude 入口点，通过 `description` 字段实现自动发现
+3. **确定性计算外置**：格式化、归档、批量队列等纯计算逻辑用 Python 脚本放在 `shared/scripts/`；推理决策保留在 SKILL.md 工作流中
 4. **L3 按需加载**：reference 文档在 SKILL.md 工作流中按步骤显式引用，不预加载
 5. **Source of Truth 分离**：长线铁律 (`long-term-rules.md`) 独立于分析流程，可独立更新和审计
 6. **降级不中断**：外部社区技能不可用时自动降级，主流程不中断
+7. **路径引用规范化**：技能内用 `${CLAUDE_SKILL_DIR}`，跨技能用 `${CLAUDE_PLUGIN_ROOT}`，禁止 `../`
 
 ### 3.3 技能依赖拓扑
 
 ```
-trend-orchestrator (自建主脑)
-  ├── [必装] okx/agent-skills          ← OKX 官方，数据层
-  ├── [必装] technical-indicator-pro   ← ClawHub，指标层
-  ├── [必装] market-structure          ← ClawHub，形态层
-  ├── [必装] rootdata                  ← ClawHub，基本面
-  ├── [可选] openmobius-skill          ← GitHub，知识库
-  ├── [可选] game-theory               ← ClawHub，代币经济
-  ├── [可选] onchain-contract          ← ClawHub，合约审计
-  ├── [可选] heurist-mesh              ← ClawHub，DeFi 数据
-  └── [可选] market-sentiment          ← ClawHub，情绪指标
+Hermes 插件
+├── skills/shared/               ← 跨技能共享层
+│   ├── references/              (指标手册/仓位管理/基本面清单/量化模型/定时调度)
+│   └── scripts/                 (报告模板/批量扫描/历史归档)
+├── trend-orchestrator           ← 长线趋势分析
+│   └── 引用 shared: indicator-glossary, position-mgmt, fundamental-checklist,
+│        quant-model, cron-setup
+├── swing-trader (规划中)        ← 短线交易
+│   └── 引用 shared: indicator-glossary, position-mgmt, quant-model, cron-setup
+├── stock-picker (规划中)        ← 选股
+│   └── 引用 shared: fundamental-checklist, quant-model, cron-setup
+│
+├── [必装] okx/agent-skills          ← OKX 官方，数据层
+├── [必装] technical-indicator-pro   ← ClawHub，指标层
+├── [必装] market-structure          ← ClawHub，形态层
+├── [必装] rootdata                  ← ClawHub，基本面
+├── [可选] openmobius-skill          ← GitHub，知识库
+├── [可选] game-theory               ← ClawHub，代币经济
+├── [可选] onchain-contract          ← ClawHub，合约审计
+└── [可选] heurist-mesh              ← ClawHub，DeFi 数据
 ```
 
 ---
@@ -230,7 +296,7 @@ trend-orchestrator (自建主脑)
          ▼
 ┌─────────────────┐
 │  第三步：技术分析  │ → technical-indicator-pro (EMA/RSI/MACD/ADX/布林带)
-│  对照指标手册     │ → indicator-glossary.md
+│  对照指标手册     │ → ${CLAUDE_PLUGIN_ROOT}/skills/shared/references/indicator-glossary.md
 └────────┬────────┘
          ▼
 ┌─────────────────┐
@@ -248,9 +314,9 @@ trend-orchestrator (自建主脑)
 └────────┬────────┘
          ▼
 ┌─────────────────┐
-│  第七步：综合判断  │ → long-term-rules.md 逐条对照
-│  量化评分        │ → quant-model.md (A-F 评级)
-│  仓位建议        │ → position-mgmt.md
+│  第七步：综合判断  │ → ${CLAUDE_SKILL_DIR}/references/long-term-rules.md 逐条对照
+│  量化评分        │ → ${CLAUDE_PLUGIN_ROOT}/skills/shared/references/quant-model.md
+│  仓位建议        │ → ${CLAUDE_PLUGIN_ROOT}/skills/shared/references/position-mgmt.md
 └────────┬────────┘
          ▼
     标准化报告输出
@@ -262,7 +328,8 @@ trend-orchestrator (自建主脑)
 用户输入 ("扫描所有主流币")
        │
        ▼
-batch_scan.py → generate_scan_queue() 按优先级排序
+${CLAUDE_PLUGIN_ROOT}/skills/shared/scripts/batch_scan.py
+  → generate_scan_queue() 按优先级排序
        │
        ▼
   对每个币种 → 简化版 7 步流程 (限时 3 分钟/币种)
@@ -283,7 +350,8 @@ Cron 触发 (每周一 09:00)
 执行标准 7 步流程 (BTC/ETH)
        │
        ▼
-history_archive.py → archive_report() 写入归档
+${CLAUDE_PLUGIN_ROOT}/skills/shared/scripts/history_archive.py
+  → archive_report() 写入归档
        │
        ▼
 ~/hermes-reports/weekly/2026-W23/BTC-USDT.md
@@ -327,14 +395,22 @@ history_archive.py → archive_report() 写入归档
 
 ## 六、部署
 
-### 6.1 本地部署
+### 6.1 整插件部署（推荐）
+
+将整个 Hermes 仓库作为 OpenClaw 插件部署，技能自动发现，共享层通过 `${CLAUDE_PLUGIN_ROOT}` 访问：
 
 ```bash
-git clone <repo-url> Hermes
-cp -r Hermes/skills/trend-orchestrator ~/.openclaw/skills/
+git clone <repo-url> ~/.openclaw/plugins/hermes
 ```
 
-### 6.2 依赖安装
+### 6.2 工作区部署
+
+```bash
+git clone <repo-url>
+cp -r Hermes/skills/* <workspace>/.openclaw/skills/
+```
+
+### 6.3 依赖安装
 
 ```bash
 npx skills add okx/agent-skills
@@ -348,10 +424,10 @@ clawhub install game-theory
 clawhub install onchain-contract-token-analysi
 ```
 
-### 6.3 验证
+### 6.4 验证
 
 ```bash
-bash scripts/verify_deps.sh
+bash skills/trend-orchestrator/scripts/verify_deps.sh
 ```
 
 在 OpenClaw 中输入 "分析 BTC 长线趋势" 验证主脑自动触发。
@@ -366,6 +442,7 @@ bash scripts/verify_deps.sh
 | v0.2 | 已完成 | openmobius-usage.md + rootdata-usage.md + report_template.py 增强 |
 | v0.3 | 已完成 | game-theory-usage.md + onchain-analysis-usage.md + cron-setup.md + batch_scan.py |
 | v1.0 | 已完成 | dune-nansen-integration.md + quant-model.md + history_archive.py + SKILL.md 全量更新 |
+| 重构 | **进行中** | 共享层抽离 + 路径变量规范化 + swing-trader / stock-picker 骨架 |
 
 ---
 
@@ -373,5 +450,5 @@ bash scripts/verify_deps.sh
 
 - [Agent Skills 开放标准](https://agentskills.io)
 - [Claude Code Skills 最佳实践](https://github.com/shanraisshan/claude-code-best-practice)
-- [OpenClaw 官方文档](https://openclaw.ai)
+- [OpenClaw 官方文档](https://docs.openclaw.ai/tools/skills)
 - [OKX Agent Trade Kit](https://www.okx.com/zh-hans/learn/okx-agent)
