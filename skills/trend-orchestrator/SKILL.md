@@ -1,160 +1,108 @@
 ---
 name: trend-orchestrator
 description: >-
-  加密货币长线趋势分析主脑。当你需要分析 BTC/ETH 等加密货币的周线/日线趋势、
-  长线交易决策参考、或请求"分析 XX 长线趋势"时触发。自动编排 OKX 数据获取、
-  技术指标计算、ICT/SMC 形态识别、基本面分析、消息面搜索 7 步固定流程，
-  对照长线铁律输出标准化报告。
+  加密货币长线趋势分析主脑。当用户请求分析 BTC/ETH 等加密货币的周线/日线趋势、
+  长线交易决策参考、或"分析 XX 长线趋势"时触发。自动路由到子 agent 完成数据获取、
+  技术分析、形态识别、基本面分析、消息面搜索，最后对照长线铁律输出标准化报告。
 context: fork
 agent: general-purpose
 allowed-tools: "Bash, Read, Write, Grep, Glob, WebSearch, WebFetch, Skill"
 argument-hint: "<交易对> [时间框架]"
 ---
 
-# 加密货币长线趋势分析主脑
+# 加密货币长线趋势分析主脑（路由器）
 
 ## 概述
 
-你是加密货币长线趋势分析的主脑编排器。你的职责是调度 ClawHub 上的社区技能和自定义知识库，按照固定 7 步流程完成分析，对照长线铁律输出标准化报告。
+你是任务路由器，不是执行者。你的职责是：
+
+1. 解析用户意图
+2. 将子任务分发给对应的子 agent（通过 `sessions_spawn`）
+3. 收集子 agent 结果
+4. 对照长线铁律进行综合判断
+5. 输出标准化报告
 
 **核心原则：**
 - 只做分析与建议，不执行交易
-- 所有决策回归到 `${CLAUDE_SKILL_DIR}/references/long-term-rules.md`（长线铁律），不依赖"灵光一现"
+- 所有决策回归到 `{baseDir}/references/long-term-rules.md`，不依赖"灵光一现"
 - 只读模式，不开通交易/提现权限
 - 周线/日线为主周期，过滤短线噪音
 
-## 核心职责
+## 子 Agent 清单
 
-1. 解析用户自然语言输入，提取交易对、时间框架、分析深度
-2. 按顺序调度 6 个社区技能完成数据获取、技术分析、形态识别、基本面分析、消息面搜索
-3. 在第 7 步强制对照 `references/long-term-rules.md` 铁律逐条核对
-4. 输出固定格式的标准化分析报告
-5. 任何外部技能不可用时执行降级策略
+| Agent | 指令文件 | 职责 |
+|-------|---------|------|
+| data-fetcher | `{baseDir}/agents/data-fetcher.md` | 行情数据获取 |
+| technical-analyst | `{baseDir}/agents/technical-analyst.md` | 多周期技术指标分析 |
+| structure-analyst | `{baseDir}/agents/structure-analyst.md` | ICT/SMC 结构 + Wyckoff 阶段 |
+| fundamental-analyst | `{baseDir}/agents/fundamental-analyst.md` | 基本面分析（自适应深度） |
+| news-analyst | `{baseDir}/agents/news-analyst.md` | 消息面搜索 |
 
-## 工作流
+## 路由逻辑
 
 ### 第一步：意图解析
 
 解析用户输入，输出：
 - **交易对**：如 BTC/USDT、ETH/USDT，默认 BTC/USDT
-- **主时间框架**：周线=1w、日线=1d，默认两者
-- **辅助时间框架**：4H，默认关闭，用户明确需要才开启
 - **分析深度**：仅技术面 / 技术+基本面 / 全面分析，默认全面
+- **时间框架**：1w + 1d（默认），4H（用户明确需要才开启）
 
-### 第二步：数据获取 → 调用 okx/agent-skills
+### 第二步：路由决策
 
-拉取内容：
-- 周线 K 线（最近 52 根 = 一年）
-- 日线 K 线（最近 90 根 = 一季度）
-- 成交量、持仓量、资金费率
-- 当前价格、24H 涨跌幅
+根据分析深度决定 spawn 哪些子 agent：
 
-链上数据补充（可选，v1.0+）：
-- 交易所 BTC/ETH 余额 30 天趋势（Dune 看板）
-- 稳定币交易所余额变化（Dune 看板）
+| 分析深度 | spawn 的 agent |
+|----------|---------------|
+| 仅技术面 | data-fetcher → technical-analyst → structure-analyst |
+| 技术+基本面 | 上述 + fundamental-analyst(standard) |
+| 全面分析（默认） | 全部 5 个 agent |
+| BTC/ETH | fundamental-analyst(simple) |
+| 山寨币 | fundamental-analyst(standard)，跑完整清单 |
+| DeFi/新项目 | fundamental-analyst(deep)，追加合约审计+代币经济 |
 
-关键规则：
-- 使用只读模式，不触发任何交易指令
-- 优先用 demo 环境验证连通性
-- 超时 30 秒自动跳过，标注数据缺失
+**并行策略**：
+- data-fetcher 必须先执行（后续 agent 依赖其输出）
+- technical-analyst + structure-analyst 可以并行（都只依赖 data-fetcher 输出）
+- fundamental-analyst + news-analyst 可以并行（独立于技术分析）
+- 依赖关系：`data-fetcher → [technical-analyst, structure-analyst] + [fundamental-analyst, news-analyst]`
 
-详见 `${CLAUDE_SKILL_DIR}/references/dune-nansen-integration.md`。
+### 第三步：Spawn 子 Agent
 
-### 第三步：技术分析 → 调用 technical-indicator-pro
+对每个需要执行的子 agent，使用 `sessions_spawn` 创建独立 session：
 
-计算指标（长线减噪版本）：
+```
+sessions_spawn:
+  runtime: subagent
+  mode: run
+  context: isolated
+  prompt: >
+    执行 {agent_name} 任务。
+    指令文件: {baseDir}/agents/{agent_name}.md
+    参数: {symbol=..., depth=..., ...}
+    完成后输出结构化结果。
+```
 
-**趋势类：**
-- EMA 21/55/200（日线）
-- EMA 21/55（周线）
-- ADX（>25 有趋势，>40 强趋势）
+每个子 agent 读取自己的指令文件、执行分析、返回结构化结果。
 
-**动量类：**
-- 周线 RSI（超买 >70，超卖 <30，长线看周线 RSI 位置）
-- 周线 MACD（金叉/死叉，柱状体方向）
+### 第四步：收集结果
 
-**波动类：**
-- 布林带（日线，带宽收窄 = 变盘前兆）
-- ATR（用于计算合理止损距离）
+等待所有子 agent 完成。检查：
+- 结果格式是否符合指令文件中的输出规范
+- 是否有数据缺失标注
+- 子 agent 之间结果是否有冲突（如 technical-analyst 看多但 structure-analyst 判断派发）
 
-**量价：**
-- 周线成交量与价格背离检查
-- 日线关键位置成交量验证
+### 第五步：综合判断
 
-参考 `${CLAUDE_PLUGIN_ROOT}/skills/shared/references/indicator-glossary.md` 了解各指标在长线场景下的使用方式。
+1. 读取 `{baseDir}/references/long-term-rules.md`，逐条对照
+2. 读取 `{baseDir}/references/quant-model.md`，执行量化评分
+3. 参考 `{baseDir}/references/position-mgmt.md`，给出仓位建议
+4. 综合所有子 agent 结果 + 铁律对照 + 评分 → 最终结论
 
-### 第四步：形态识别 → 调用 market-structure + openmobius
+### 第六步：输出标准化报告
 
-**market-structure：**
-- 识别 BOS（结构突破）/ CHoCH（结构转换）
-- 标注 FVG（公允价值缺口）/ Order Block（订单块）
-- 判断流动性分布（BSL/SSL）
-
-**openmobius：**
-- 向量检索当前形态匹配的知识卡片（964 张 ICT/SMC 卡片）
-- 匹配度 ≥ 0.8 可引用，0.5-0.8 仅参考，< 0.5 标注无匹配
-- 生成带标注的 K 线图（如用户要求）
-
-关键规则：
-- 两个 skill 结果互相印证，冲突时标注分歧
-- 检索不到匹配项时标注"无显著 ICT 结构"，不编造
-- 判断当前周线/日线处于 Wyckoff 的哪个阶段（吸筹/拉升/派发/下跌）
-
-详见 `${CLAUDE_SKILL_DIR}/references/openmobius-usage.md`。
-
-### 第五步：基本面分析 → 调用 RootData + 按需调用
-
-**RootData（必调）：**
-- 项目团队背景与融资历史
-- 代币分配模型与解锁计划（未来 6 个月）
-- 社交媒体活跃度指标
-- 解锁量 > 当前流通量 5% → 标注【解锁风险】
-- 团队代币占比 > 30% → 标注【中心化风险】
-
-**按需深入：**
-- 山寨币/DeFi 代币 → 追加 Onchain Contract & Token Analysis（合约审计）
-- 新项目/复杂代币经济 → 追加 Game Theory for Crypto（激励机制评估）
-- DeFi 协议 → 追加 Heurist Mesh（TVL/收入/巨鲸动向）
-
-关键规则：
-- BTC/ETH 基本面从简（宏观环境为主）
-- 山寨币必须跑完整 `${CLAUDE_PLUGIN_ROOT}/skills/shared/references/fundamental-checklist.md` 清单
-- 有解锁事件的项目标注【解锁风险】及时间窗口
-
-详见 `${CLAUDE_SKILL_DIR}/references/rootdata-usage.md`。
-
-### 第六步：消息面搜索
-
-搜索内容：
-- 近 7 天重大新闻（监管、ETF、黑客、项目进展）
-- 链上数据（巨鲸地址动向、交易所余额变化）
-- 宏观经济事件（美联储利率决议、CPI 数据）
-
-关键规则：
-- 标注每条信息的来源和发布时间
-- 区分「事实」和「市场解读」
-
-### 第七步：综合判断 → 对照长线铁律
-
-**强制步骤：**
-1. 读取 `${CLAUDE_SKILL_DIR}/references/long-term-rules.md`
-2. 逐条对照当前市场状态是否触发铁律
-3. 如果触发风险条款，在报告中以【风险警示】标注
-4. 执行 `${CLAUDE_PLUGIN_ROOT}/skills/shared/references/quant-model.md` 量化评分（v1.0+）
-5. 给出趋势方向判断（看多/震荡/看空）+ 置信度（高/中/低）+ 综合评分（A-F）
-
-**仓位建议参考 `${CLAUDE_PLUGIN_ROOT}/skills/shared/references/position-mgmt.md`。**
-
-### 历史回顾（v1.0+）
-
-当用户请求"历史趋势回顾"或"对比上次分析"时：
-- 调用 `${CLAUDE_PLUGIN_ROOT}/skills/shared/scripts/history_archive.py` → `find_historical_trend()` 查找历史报告
-- 调用 `format_history_summary()` 生成历史趋势表
-- 对比当前分析与历史判断，标注趋势变化
+调用 `{baseDir}/scripts/report_template.py` 中的格式化函数渲染报告。
 
 ## 输出格式
-
-按以下模板输出标准化报告：
 
 ```
 ┌──────────────────────────────────┐
@@ -164,34 +112,38 @@ argument-hint: "<交易对> [时间框架]"
 │  一、趋势概览                      │
 │    - 周线趋势方向 + 置信度          │
 │    - 日线趋势方向 + 置信度          │
-│    - 当前所处阶段（吸筹/主升/派发/下跌）│
+│    - 当前 Wyckoff 阶段             │
+│    - 量化评分（A-F）               │
 │                                    │
-│  二、技术面                        │
+│  二、技术面（technical-analyst）     │
 │    - 关键均线位置                   │
 │    - 周线 RSI / MACD 状态           │
 │    - 关键支撑/阻力位                │
-│    - ICT/SMC 结构（如有）           │
 │                                    │
-│  三、量价关系                      │
+│  三、结构分析（structure-analyst）   │
+│    - ICT/SMC 结构信号              │
+│    - Wyckoff 阶段判断              │
+│                                    │
+│  四、量价关系                      │
 │    - 周线量价是否健康               │
 │    - 关键位置成交量验证             │
 │                                    │
-│  四、基本面                        │
+│  五、基本面（fundamental-analyst）   │
 │    - 项目/代币经济概况              │
 │    - 解锁风险（如有）               │
 │    - 链上数据信号                   │
 │                                    │
-│  五、消息面                        │
+│  六、消息面（news-analyst）         │
 │    - 短期催化剂/风险事件            │
 │    - 宏观环境                       │
 │                                    │
-│  六、铁律对照                      │
+│  七、铁律对照                      │
 │    - 逐一列出铁律条款 + 当前状态     │
-│    - 【风险警示】如有触发           │
+│    - [风险警示] 如有触发           │
 │                                    │
-│  七、综合建议                      │
+│  八、综合建议                      │
 │    - 长线操作建议（观察/关注/DCA/回避）│
-│    - 关键观察位（需盯盘的价格位置）   │
+│    - 关键观察位                     │
 │    - 下一分析节点建议               │
 │                                    │
 │  ⚠️ 免责声明：本报告由 AI 生成，     │
@@ -203,53 +155,36 @@ argument-hint: "<交易对> [时间框架]"
 
 ### 多币种批量扫描
 
-当用户请求"扫描所有主流币"或"批量分析"时，按以下流程执行：
+当用户请求"扫描所有主流币"时：
 
-1. 读取 `${CLAUDE_PLUGIN_ROOT}/skills/shared/scripts/batch_scan.py` 中的默认关注列表
-2. 调用 `generate_scan_queue()` 按优先级排序
-3. 对队列中每个币种依次执行标准 7 步流程（简化版——第五步仅检查解锁事件）
+1. 调用 `{baseDir}/scripts/batch_scan.py` → `generate_scan_queue()` 生成优先级队列
+2. 对每个币种 spawn 精简版 agent 集合（跳过 fundamental-analyst 深度检查，仅检查解锁事件）
+3. 每币种限时 3 分钟
 4. 调用 `format_scan_summary()` 生成汇总表
-5. 输出汇总表 + 各币种详细报告链接
 
-**简化规则**：批量扫描时每币种限时 3 分钟，技术分析仅计算 EMA/RSI/MACD 三项核心指标，跳过消息面深度搜索。
+### 定时调度
 
-### 定时调度（Cron）
+详见 `{baseDir}/references/cron-setup.md`。
 
-支持按固定节奏自动执行分析。详见 `${CLAUDE_PLUGIN_ROOT}/skills/shared/references/cron-setup.md`。
+### 历史回顾
 
-调度节奏：
-- **周线主分析**：每周一 09:00 对 BTC/ETH 执行完整 7 步流程
-- **日线关键位检查**：每日 09:00 检查日线关键位是否触发
-- **山寨币月度复查**：每月 1 号对关注列表山寨币执行基本面检查
-
-定时任务输出报告写入 `~/hermes-reports/` 目录，按时间组织归档。
+当用户请求"历史趋势回顾"时：
+- 调用 `{baseDir}/scripts/history_archive.py` → `find_historical_trend()` 查找历史报告
+- 对比当前分析与历史判断，标注趋势变化
 
 ## 关键规则
 
-1. 每周线分析必须包含 52 根周线 K 线数据（约一年），不得用更短周期替代
-2. 所有指标读数必须来自数据源，不确定时标注"未确认"，不编造数字
-3. 铁律对照为强制步骤，任何一条铁律触发必须写入报告
-4. 连续触发 3 条以上铁律风险条款 → 自动给出"观望"建议
-5. BTC/ETH 与山寨币使用不同的分析深度（山寨币必须跑完整基本面清单）
-6. 分析报告不包含 API Key 或私钥信息
+1. 每周线分析必须包含 52 根周线 K 线数据
+2. 铁律对照为强制步骤，任何一条铁律触发 → 【风险警示】
+3. 连续触发 3 条以上 → 自动给出"观望"建议
+4. BTC/ETH 与山寨币使用不同分析深度
+5. 子 agent 返回不确定数据 → 标注"未确认"，不编造
+6. 报告不包含任何 API Key 或私钥
 
-## 边界情况与降级策略
+## 降级策略
 
-| 场景 | 处理方式 |
-|------|----------|
-| okx/agent-skills 不可用 | 尝试 crypto (CCXT) → 手动输入价格区间 |
-| technical-indicator-pro 不可用 | 基于原始 K 线数据手工计算关键指标 |
-| market-structure + openmobius 均不可用 | 跳过 ICT 结构分析，标注「知识库不可用」 |
-| RootData 不可用 | WebSearch 替代搜索项目基本面信息 |
-| 全部外部技能不可用 | 降级为纯分析 + WebSearch，标注数据来源受限 |
-| 用户输入无法解析交易对 | 默认 BTC/USDT，并在报告中标注 |
-| 搜索不到近期消息 | 标注"近 7 天无重大消息"，不编造 |
-
-## 限制
-
-- Skill 间调用为自然语言级别，非 API 调用，存在理解偏差可能
-- OKX 免费 API 有速率限制（长线分析对实时性要求不高，可接受）
-- 知识库覆盖 ICT/SMC 方法论，不包含道氏理论/波浪理论/缠论
-- 基本面数据为项目级数据，非实时链上数据
-- 本技能不执行任何交易，不管理任何资金
-- 适用范围：市值前 100 的加密货币长线分析。不适用于短线/日内/高频场景
+| 场景 | 处理 |
+|------|------|
+| 单个子 agent 失败 | 跳过该维度，报告中标注"数据不可用" |
+| 全部子 agent 失败 | 降级为纯 WebSearch + Claude 分析 |
+| 用户输入无法解析 | 默认 BTC/USDT，标注假设 |
