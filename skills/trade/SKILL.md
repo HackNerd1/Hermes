@@ -1,8 +1,9 @@
 ---
 name: trend-orchestrator
 description: >-
-  加密货币趋势分析与选币主脑。当用户请求分析 BTC/ETH 等加密货币的趋势、
-  交易决策参考、"分析 XX 长线/短线趋势"、"选币/挑币/筛选强势币"时触发。
+  加密货币趋势分析、选币与交易策略主脑。当用户请求分析 BTC/ETH 等加密货币的趋势、
+  交易决策参考、"分析 XX 长线/短线趋势"、"选币/挑币/筛选强势币"、
+  "制定交易策略"、"建仓计划"、"XX 多头/空头策略"时触发。
   纯路由器——解析意图后派发给对应子 agent 执行。
 context: fork
 agent: general-purpose
@@ -32,6 +33,8 @@ argument-hint: "<交易对 | 选币> [长线/短线]"
 | structure-analyst | `{baseDir}/agents/structure-analyst.md` | 仅结构分析 |
 | fundamental-analyst | `{baseDir}/agents/fundamental-analyst.md` | 仅基本面 |
 | news-analyst | `{baseDir}/agents/news-analyst.md` | 仅消息面 |
+| trading-strategist | `{baseDir}/agents/trading-strategist.md` | 交易策略制定与执行（建仓、止盈止损、仓位计算） |
+| trade-tracker | `{baseDir}/agents/trade-tracker.md` | 交易记录与持仓跟踪（.hermes 读写、止盈止损监控、查询汇总） |
 
 ## 路由逻辑
 
@@ -48,7 +51,7 @@ argument-hint: "<交易对 | 选币> [长线/短线]"
 
 | 用户意图 | 派发目标 | 参数 |
 |----------|---------|------|
-| "分析 XX 趋势" / "XX 怎么样" / "XX 该买吗"（已指定长短线） | analyzer-orchestrator | `symbol={币种} mode={long/short}` |
+| "分析 XX 趋势" / "XX 怎么样" / "XX 该买吗"（已指定长短线） | analyzer-orchestrator | `symbol={币种} mode={long/short}`。分析完成后自动保存报告到 `.hermes/reports/` |
 | "选币" / "挑币" / "筛选强势币" / "最近有什么币可以买"（已指定长短线） | coin-picker | `mode={long/short} categories=... max_coins=20 dimensions=...` |
 | **未指定长短线** | **拦截 → 询问用户** | 展示长短线差异，让用户选择后再派发 |
 | 批量扫描 | analyzer-orchestrator（循环） | 配合 `{baseDir}/scripts/batch_scan.py` |
@@ -56,6 +59,44 @@ argument-hint: "<交易对 | 选币> [长线/短线]"
 | 仅技术分析 | technical-analyst | `symbol={币种} mode={long/short}` |
 | 历史回顾 | analyzer-orchestrator | 配合 `{baseDir}/scripts/history_archive.py` |
 | 定时调度 | 详见 `{baseDir}/references/cron-setup.md` | — |
+| "BTC 多头交易策略" / "制定 ETH 空头策略" / "建仓计划 SOL 多头"（已指定方向和币种） | trading-strategist | `symbol={币种} direction={long/short} mode={long/short} capital_usd={用户提供}` |
+| "我的持仓" / "查看交易记录" / "当前仓位" | trade-tracker（查询模式） | 调用 `{baseDir}/scripts/trade_recorder.py list/summary` |
+| "跟踪持仓" / "检查持仓状态" / "更新止盈止损" | trade-tracker（跟踪模式） | spawn trade-tracker 执行模式 C/D |
+| 更新止盈止损 / 平仓 | trade-tracker（更新模式） | 调用 `{baseDir}/scripts/trade_recorder.py update/close` |
+
+### 交易策略请求 → 信息校验
+
+当路由到 trading-strategist 时，**必须校验以下信息是否齐全**：
+
+| 必填项 | 来源 | 缺失时操作 |
+|--------|------|-----------|
+| 交易对 (symbol) | 用户输入 | 询问用户指定 |
+| 方向 (direction) | 用户输入 | 询问用户选择多头/空头 |
+| 模式 (mode) | 用户输入或推断 | 询问用户选择长线/短线 |
+| 可用资金 (capital_usd) | 用户输入 | 询问用户输入 |
+
+如果任一必填项缺失 → **不派发 trading-strategist**，先收集完整信息。
+
+如果所有必填项齐全 → 派发 trading-strategist：
+
+```
+sessions_spawn:
+  runtime: subagent
+  mode: run
+  context: isolated
+  prompt: >
+    执行 trading-strategist 任务。
+    指令文件: {baseDir}/agents/trading-strategist.md
+    参数: symbol={symbol}, direction={long/short}, mode={long/short}, capital_usd={金额}
+    按指令文件中的工作流执行：
+    1. 第零步：信息校验（补齐缺失项）
+    2. 第一步：查找分析报告（.hermes/reports/{symbol}_{mode}_*.json）
+       - 无报告 → 提醒用户先运行 "分析 {symbol} {mode} 趋势"
+    3. 第二步：对照 Source of Truth 基于报告数据制定交易策略
+    4. 第三步：输出策略报告并等待用户确认
+    5. 第四步：用户确认后通过 okx/agent-skills 执行交易
+    6. 执行成功后 spawn trade-tracker 记录到 .hermes/trades/ 并启动跟踪
+```
 
 ### 未指定长短线 → 拦截询问
 

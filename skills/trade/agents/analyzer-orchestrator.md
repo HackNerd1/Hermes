@@ -165,6 +165,65 @@ sessions_spawn:
 └──────────────────────────────────┘
 ```
 
+### 第六步：保存分析报告到 .hermes
+
+输出报告后，将结构化分析数据保存到 `.hermes/reports/`，供 `trading-strategist` 后续读取制定交易策略。
+
+保存路径：`.hermes/reports/{symbol}_{mode}_{timestamp}.json`
+
+使用 Write 工具写入以下 JSON 结构：
+
+```json
+{
+  "report_id": "{symbol}_{mode}_{timestamp}",
+  "symbol": "BTC/USDT",
+  "mode": "long",
+  "generated_at": "ISO8601",
+  "price": 95000.00,
+  "conclusion": "做多",
+  "confidence": "高",
+  "trend": {
+    "direction": "多头",
+    "ema_alignment": "EMA21 > EMA55 > EMA200",
+    "adx": 32,
+    "adx_stage": "趋势明确"
+  },
+  "structure": {
+    "wyckoff_phase": "积累阶段",
+    "supports": [
+      {"level": "S1", "price": 92000, "type": "前低"},
+      {"level": "S2", "price": 88000, "type": "需求区下沿"}
+    ],
+    "resistances": [
+      {"level": "R1", "price": 100000, "type": "前高"},
+      {"level": "R2", "price": 105000, "type": "供给区上沿"}
+    ]
+  },
+  "quant_score": {
+    "total": 78,
+    "grade": "A"
+  },
+  "iron_rules": {
+    "triggered": 1,
+    "details": [
+      {"rule": "周线定方向", "status": "pass"},
+      {"rule": "ADX 趋势强度", "status": "pass"}
+    ]
+  },
+  "risk_warnings": [
+    "缩量突破前高，警惕假突破"
+  ],
+  "full_report_md": "{完整的 Markdown 报告内容}"
+}
+```
+
+输出确认信息：
+
+```
+📁 分析报告已保存：.hermes/reports/{report_id}.json
+   后续可通过此报告制定交易策略。
+```
+
 ## 关键规则
 
 1. **策略结论前置**：报告最前面必须给出 做多/做空/观望 + 置信度
@@ -174,6 +233,7 @@ sessions_spawn:
 5. 连续触发 3 条以上 → 自动给出"观望"
 6. 短线不做完整铁律对照，以技术面信号为主
 7. 子 agent 返回不确定数据 → 标注"未确认"，不编造
+8. **分析报告必须落盘**：每次输出后保存结构化 JSON 到 `.hermes/reports/`，供 trading-strategist 读取
 
 ## 降级策略
 
@@ -182,3 +242,4 @@ sessions_spawn:
 | 单个子 agent 失败 | 跳过该维度，报告中标注"数据不可用" |
 | 全部子 agent 失败 | 降级为纯 WebSearch + Claude 分析 |
 | 外部技能不可用 | 由各子 agent 内部降级（见各 agent 指令文件） |
+| .hermes/reports/ 不可写 | 报告中内联输出 JSON，提示用户手动保存 |

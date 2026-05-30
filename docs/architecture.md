@@ -139,6 +139,7 @@ SKILL.md 退为**纯路由器**，只做意图解析和派发。分析编排逻�
 │  ③ 收集结果 + 冲突检测            │
 │  ④ 铁律对照 + 量化评分            │
 │  ⑤ 输出 做多/做空/观望 + 理由     │
+│  ⑥ 保存结构化报告 → .hermes/reports/ │
 └──────────┬──────────────────────┘
            │ sessions_spawn
     ┌──────┼──────┬──────┬──────┐
@@ -147,6 +148,20 @@ SKILL.md 退为**纯路由器**，只做意图解析和派发。分析编排逻�
 │ data ││tech ││struct││fund ││news │
 │fetcher││analyst││analyst││analyst││analyst│
 └──────┘└─────┘└─────┘└─────┘└─────┘
+
+           ┌─── 报告输出后 ───┐
+           ▼                  ▼
+┌──────────────────┐  ┌──────────────────┐
+│ trading-strategist│  │   trade-tracker  │
+│                  │  │                  │
+│ ① 读取 .hermes   │  │ ① 记录交易到     │
+│    /reports/ 报告 │  │    .hermes/trades/│
+│ ② 对照 Source    │  │ ② 跟踪止盈止损    │
+│    of Truth 制定  │  │ ③ 查询持仓/历史   │
+│    交易策略       │  │ ④ 更新平仓/止损   │
+│ ③ 用户确认后调用  │  │                  │
+│    OKX API 执行   │  └──────────────────┘
+└──────────────────┘
 ```
 
 **设计理由**：SKILL.md 保持轻量，后续新增子 agent（如短线交易、选股）只需在路由表中加一行。编排逻辑集中在 `analyzer-orchestrator` 中，单一职责，易于维护。
@@ -200,32 +215,43 @@ data-fetcher（必须先执行）
 Hermes/
 ├── README.md
 ├── .gitignore
-├── .hermes/                              # 本地临时数据（不提交）
+├── .hermes/                              # 本地中间数据（不提交）
 │   ├── scan_queue.json                  # 扫描队列
 │   ├── batch_results/                   # 分批扫描结果
 │   ├── comparisons/                     # 横向对比报告
-│   └── history/                         # 历史选币记录
+│   ├── history/                         # 历史选币记录
+│   ├── reports/                         # 分析报告（analyzer-orchestrator 输出）
+│   │   └── {symbol}_{mode}_{timestamp}.json  # 结构化分析数据
+│   └── trades/                          # 交易记录（trade-tracker 管理）
+│       ├── index.json                   # 全局交易索引
+│       └── {YYYY-MM}/                   # 按月分目录（时间+状态双维度）
+│           ├── active.json              # 当月持仓摘要
+│           ├── closed.json              # 当月已平仓摘要
+│           └── {trade_id}.json          # 单笔完整记录
 ├── docs/
 │   ├── architecture.md                  # 本文档
 │   ├── log.md                           # 需求日志
 │   └── crypto-trend-trading-design.md   # 产品设计文档
 └── skills/
-    └── trend-orchestrator/              # 趋势分析 + 选币
-        ├── SKILL.md                     # 纯路由器（~70 行，YAML frontmatter + 路由表）
-        ├── agents/                      # 子 agent 指令文件
-        │   ├── analyzer-orchestrator.md # 单币种分析编排器（长线/短线路由 + 铁律 + 策略输出）
+    └── trend-orchestrator/              # 趋势分析 + 选币 + 交易策略
+        ├── SKILL.md                     # 纯路由器（~100 行，YAML frontmatter + 路由表）
+        ├── agents/                      # 子 agent 指令文件（10 个）
+        │   ├── analyzer-orchestrator.md # 单币种分析编排器（长线/短线路由 + 铁律 + 报告输出 → .hermes/reports/）
         │   ├── coin-picker.md           # 多币种横向对比选币（分批扫描 + 评分排名）
         │   ├── data-fetcher.md          # 行情数据获取
         │   ├── technical-analyst.md     # 多周期技术指标分析
         │   ├── structure-analyst.md     # ICT/SMC 结构 + Wyckoff 阶段
         │   ├── fundamental-analyst.md   # 基本面分析（自适应深度）
-        │   └── news-analyst.md          # 消息面搜索
+        │   ├── news-analyst.md          # 消息面搜索
+        │   ├── trading-strategist.md    # 交易策略制定与执行（读取报告 → Source of Truth → 用户确认 → OKX API）
+        │   └── trade-tracker.md         # 交易记录与持仓跟踪（.hermes/trades/ 读写 + 止盈止损监控 + 查询汇总）
         ├── references/                  # 参考文档（L3 按需加载）
         │   ├── long-term-rules.md       # 长线交易铁律（Source of Truth）
         │   ├── position-mgmt.md         # 仓位管理规则
         │   ├── indicator-glossary.md    # 技术指标使用手册
         │   ├── fundamental-checklist.md # 基本面分析清单
         │   ├── quant-model.md           # 量化评分模型
+        │   ├── trade-execution.md       # 交易执行规范（OKX API 调用 + 价格偏差检查）
         │   ├── openmobius-usage.md      # OpenMobius 集成指南
         │   ├── rootdata-usage.md        # RootData 集成指南
         │   ├── game-theory-usage.md     # 代币经济分析指南
@@ -237,18 +263,20 @@ Hermes/
             ├── batch_scan.py            # 多币种批量扫描
             ├── coin_screener.py         # 多币种筛选评分 + 横向对比
             ├── history_archive.py       # 历史归档 + 趋势查询
+            ├── trade_recorder.py        # 交易记录 CRUD（save/update/close/list/summary）
             └── verify_deps.sh           # 依赖验证
 ```
 
 ### 3.2 设计原则
 
 1. **Skill 自包含**：每个 skill 独立携带自己的 `agents/`、`references/` 和 `scripts/`，可直接安装到 `~/.openclaw/skills/`
-2. **路由与编排分离**：SKILL.md 只做意图解析和派发；analyzer-orchestrator 负责编排、铁律对照和策略输出；5 个专业 agent 负责具体分析
+2. **路由与编排分离**：SKILL.md 只做意图解析和派发；analyzer-orchestrator 负责编排、铁律对照和策略输出；专业 agent 负责具体分析
 3. **Agent 指令即契约**：每个 `agents/*.md` 定义清晰的输入/输出接口
 4. **L3 按需加载**：agents/、references/ 和 scripts/ 在 SKILL.md 中按步骤显式引用
-5. **确定性计算外置**：格式化、归档、批量队列用 Python 脚本；推理保留在 agent 指令中
+5. **确定性计算外置**：格式化、归档、批量队列、交易记录用 Python 脚本；推理保留在 agent 指令中
 6. **降级不中断**：子 agent 或外部技能不可用时自动降级，主流程不中断
 7. **路径统一用 `{baseDir}`**：所有内部引用使用 `{baseDir}` 变量
+8. **关键决策中间文件落盘**：分析报告存入 `.hermes/reports/`，交易记录存入 `.hermes/trades/`，agent 间通过结构化 JSON 传递数据而非重复分析
 
 ### 3.3 外部技能依赖
 
@@ -298,6 +326,10 @@ trend-orchestrator
        │
        ▼
   输出: 做多/做空/观望 + 置信度 + 理由 + 完整报告
+       │
+       ▼
+  保存结构化 JSON → .hermes/reports/{symbol}_{mode}_{timestamp}.json
+  （供 trading-strategist 后续读取制定交易策略）
 ```
 
 ### 4.2 短线分析流程
@@ -387,6 +419,77 @@ Cron 触发 (每周一 09:00)
   输出: 强势 TOP N（做多候选） + 弱势 TOP N（规避/做空候选） + 分维度对比表
 ```
 
+### 4.6 分析报告持久化流程
+
+```
+analyzer-orchestrator 输出报告（第五步）
+       │
+       ▼
+提取结构化数据（price/conclusion/trend/structure/supports/resistances/quant_score/iron_rules）
+       │
+       ▼
+使用 Write 工具保存 → .hermes/reports/{symbol}_{mode}_{timestamp}.json
+       │
+       ▼
+trading-strategist 通过 Glob 查找 → .hermes/reports/{symbol}_{mode}_*.json
+```
+
+**报告 JSON 关键字段**：`price`, `conclusion`（做多/做空/观望）, `confidence`, `trend`（方向+ADX）, `structure`（支撑/阻力/Wyckoff）, `quant_score`, `iron_rules`, `risk_warnings[]`
+
+### 4.7 交易策略流程
+
+```
+用户输入 ("BTC 多头交易策略")
+       │
+       ▼
+SKILL.md 路由 → 校验 symbol/direction/mode/capital
+       │
+       ▼
+sessions_spawn trading-strategist
+       │
+       ├──→ 第一步：查找报告
+       │     Glob .hermes/reports/{symbol}_{mode}_*.json
+       │     无报告 → 提醒用户先 "分析 {symbol} {mode} 趋势"
+       │
+       ├──→ 第二步：基于报告数据 + Source of Truth 制定策略
+       │     入场位 ← report.structure.supports/resistances
+       │     止损位 ← {baseDir}/references/position-mgmt.md + report.structure
+       │     止盈位 ← report.structure (R1→TP1, R2→TP2, 前高→TP3)
+       │     仓位   ← position-mgmt.md 公式 + report.trend.adx
+       │
+       ├──→ 第三步：输出策略报告 → 等待用户确认
+       │
+       ├──→ 第四步：用户确认 → okx/agent-skills 限价单
+       │     执行前：价格偏差检查（{baseDir}/references/trade-execution.md）
+       │
+       └──→ 第五步：执行成功 → spawn trade-tracker 记录
+             trade_recorder.py save → .hermes/trades/{YYYY-MM}/{trade_id}.json
+```
+
+### 4.8 持仓跟踪流程
+
+```
+用户输入 ("查看持仓" / "检查持仓状态")
+       │
+       ▼
+SKILL.md 路由 → trade-tracker
+       │
+       ├──→ 查询模式：trade_recorder.py list/summary → 输出持仓表
+       │
+       └──→ 跟踪模式：trade_recorder.py list --status open
+             │
+             └──→ 对每笔持仓：
+                   ├── okx/agent-skills 获取当前价
+                   ├── 检查止损触发 (当前价 vs stop_loss)
+                   ├── 检查 TP1/TP2/TP3 触及 (当前价 vs take_profit[])
+                   ├── 检查止损是否需上移 (TP 触及 → 成本价)
+                   └── 长线：检查趋势变化 (需重新 spawn analyzer-orchestrator)
+             │
+             └──→ 输出跟踪报告（需操作 / 正常持仓）
+                   │
+                   └──→ 用户确认后 → trade_recorder.py update/close
+```
+
 ---
 
 ## 五、安全设计
@@ -394,9 +497,9 @@ Cron 触发 (每周一 09:00)
 ### 5.1 API Key 管理
 
 ```
-OKX API Key 权限配置（只读）：
-  - 读取（Read）        ✓
-  - 交易（Trade）       ✗ 关闭
+OKX API Key 权限配置：
+  - 读取（Read）        ✓ 必需（分析 + 跟踪）
+  - 交易（Trade）       ✓ 必需（交易执行阶段，仅限价单）
   - 提现（Withdraw）    ✗ 关闭
   - 转账（Transfer）    ✗ 关闭
 
@@ -440,7 +543,7 @@ bash ~/.openclaw/skills/trend-orchestrator/scripts/verify_deps.sh
 | v0.2 | 已完成 | OpenMobius + RootData 集成 + 报告模板增强 |
 | v0.3 | 已完成 | Game Theory + Onchain Analysis + batch_scan.py + cron-setup |
 | v1.0 | 已完成 | Dune/Nansen + quant-model + history_archive.py |
-| v1.0.1 | **进行中** | 纯路由 + analyzer-orchestrator 双层架构；长线/短线双模式；策略结论输出 |
+| v1.0.1 | **进行中** | 纯路由 + analyzer-orchestrator 双层架构；长线/短线双模式；策略结论输出；trading-strategist（报告驱动策略）+ trade-tracker（交易记录与跟踪）；分析报告 → .hermes/reports/，交易记录 → .hermes/trades/ |
 
 ---
 
