@@ -1,6 +1,6 @@
 # Hermes 架构文档
 
-> OpenClaw 加密货币长线趋势分析系统 —— SKILL.md 主脑路由 + 子 agent 执行 + 社区技能组合 + 自定义知识库。
+> OpenClaw 加密货币趋势分析系统 —— SKILL.md 纯路由 → analyzer-orchestrator 编排 → 5 专业子 agent 并行执行。支持长线/短线双模式。
 
 ---
 
@@ -115,24 +115,31 @@ OpenClaw 使用 `{baseDir}` 变量，运行时替换为当前 skill 的安装路
 
 ## 二、架构设计模式
 
-### 2.1 路由器 + 子 Agent 模式
+### 2.1 纯路由 + 编排器 + 子 Agent 双层模式
 
-SKILL.md 充当任务路由器，不直接执行分析。通过 `sessions_spawn` 将子任务分发给独立 agent，收集结果后综合判断。
+SKILL.md 退为**纯路由器**，只做意图解析和派发。分析编排逻辑全部下沉到 `analyzer-orchestrator` 子 agent，实现路由与执行的彻底分离。
 
 ```
 用户输入
     │
     ▼
-┌─────────────────────────────────────┐
-│  SKILL.md（路由器）                   │
-│                                      │
-│  ① 意图解析                          │
-│  ② 路由决策：决定 spawn 哪些 agent    │
-│  ③ sessions_spawn 分发子任务          │
-│  ④ 收集子 agent 结果                  │
-│  ⑤ 铁律对照 + 量化评分                │
-│  ⑥ 输出标准化报告                     │
-└──────────┬──────────────────────────┘
+┌─────────────────────────────────┐
+│  SKILL.md（纯路由器，~60 行）     │
+│                                  │
+│  ① 解析币种 + 长线/短线           │
+│  ② 查路由表 → 派发目标 agent     │
+└──────────┬──────────────────────┘
+           │ sessions_spawn
+           ▼
+┌─────────────────────────────────┐
+│  analyzer-orchestrator（编排器）  │
+│                                  │
+│  ① 路由决策（长线/短线参数表）     │
+│  ② Spawn 5 个子 agent            │
+│  ③ 收集结果 + 冲突检测            │
+│  ④ 铁律对照 + 量化评分            │
+│  ⑤ 输出 做多/做空/观望 + 理由     │
+└──────────┬──────────────────────┘
            │ sessions_spawn
     ┌──────┼──────┬──────┬──────┐
     ▼      ▼      ▼      ▼      ▼
@@ -142,16 +149,28 @@ SKILL.md 充当任务路由器，不直接执行分析。通过 `sessions_spawn`
 └──────┘└─────┘└─────┘└─────┘└─────┘
 ```
 
-**并行策略：**
+**设计理由**：SKILL.md 保持轻量，后续新增子 agent（如短线交易、选股）只需在路由表中加一行。编排逻辑集中在 `analyzer-orchestrator` 中，单一职责，易于维护。
+
+**长线模式并行策略：**
 
 ```
 data-fetcher（必须先执行）
     │
     ├──→ technical-analyst ──┐
     ├──→ structure-analyst ──┤ 并行
-    │                         ├──→ 路由器汇总
+    │                         ├──→ 编排器汇总
     ├──→ fundamental-analyst ─┤
     └──→ news-analyst ───────┘ 并行
+```
+
+**短线模式并行策略（精简，跳过基本面）：**
+
+```
+data-fetcher（必须先执行）
+    │
+    ├──→ technical-analyst ──┐
+    ├──→ structure-analyst ──┤ 并行
+    └──→ news-analyst ──────┘
 ```
 
 ### 2.2 子 Agent 指令合约
@@ -180,13 +199,22 @@ data-fetcher（必须先执行）
 ```
 Hermes/
 ├── README.md
+├── .gitignore
+├── .hermes/                              # 本地临时数据（不提交）
+│   ├── scan_queue.json                  # 扫描队列
+│   ├── batch_results/                   # 分批扫描结果
+│   ├── comparisons/                     # 横向对比报告
+│   └── history/                         # 历史选币记录
 ├── docs/
 │   ├── architecture.md                  # 本文档
+│   ├── log.md                           # 需求日志
 │   └── crypto-trend-trading-design.md   # 产品设计文档
 └── skills/
-    └── trend-orchestrator/              # 长线趋势分析
-        ├── SKILL.md                     # 路由器（YAML frontmatter + 路由逻辑）
+    └── trend-orchestrator/              # 趋势分析 + 选币
+        ├── SKILL.md                     # 纯路由器（~70 行，YAML frontmatter + 路由表）
         ├── agents/                      # 子 agent 指令文件
+        │   ├── analyzer-orchestrator.md # 单币种分析编排器（长线/短线路由 + 铁律 + 策略输出）
+        │   ├── coin-picker.md           # 多币种横向对比选币（分批扫描 + 评分排名）
         │   ├── data-fetcher.md          # 行情数据获取
         │   ├── technical-analyst.md     # 多周期技术指标分析
         │   ├── structure-analyst.md     # ICT/SMC 结构 + Wyckoff 阶段
@@ -207,6 +235,7 @@ Hermes/
         └── scripts/                     # 确定性计算脚本
             ├── report_template.py       # 报告格式化 + 分段渲染
             ├── batch_scan.py            # 多币种批量扫描
+            ├── coin_screener.py         # 多币种筛选评分 + 横向对比
             ├── history_archive.py       # 历史归档 + 趋势查询
             └── verify_deps.sh           # 依赖验证
 ```
@@ -214,7 +243,7 @@ Hermes/
 ### 3.2 设计原则
 
 1. **Skill 自包含**：每个 skill 独立携带自己的 `agents/`、`references/` 和 `scripts/`，可直接安装到 `~/.openclaw/skills/`
-2. **路由器不执行**：SKILL.md 只做路由、汇总和综合判断，具体分析由子 agent 完成
+2. **路由与编排分离**：SKILL.md 只做意图解析和派发；analyzer-orchestrator 负责编排、铁律对照和策略输出；5 个专业 agent 负责具体分析
 3. **Agent 指令即契约**：每个 `agents/*.md` 定义清晰的输入/输出接口
 4. **L3 按需加载**：agents/、references/ 和 scripts/ 在 SKILL.md 中按步骤显式引用
 5. **确定性计算外置**：格式化、归档、批量队列用 Python 脚本；推理保留在 agent 指令中
@@ -245,15 +274,19 @@ trend-orchestrator
 用户输入 ("分析 BTC 长线趋势")
        │
        ▼
-  SKILL.md 意图解析 → 全面分析模式 → 需要全部 5 个 agent
+  SKILL.md 意图解析 → 提取 symbol=BTC, mode=long
        │
        ▼
-  sessions_spawn data-fetcher     → {baseDir}/agents/data-fetcher.md
+  sessions_spawn analyzer-orchestrator(symbol=BTC, mode=long)
        │
-       ├──→ spawn technical-analyst   → {baseDir}/agents/technical-analyst.md
-       ├──→ spawn structure-analyst   → {baseDir}/agents/structure-analyst.md
-       ├──→ spawn fundamental-analyst → {baseDir}/agents/fundamental-analyst.md
-       └──→ spawn news-analyst        → {baseDir}/agents/news-analyst.md
+       ▼
+  analyzer-orchestrator 路由决策:
+    data-fetcher(timeframe=1w,1d count=52,90)
+       │
+       ├──→ spawn technical-analyst(mode=long)   → {baseDir}/agents/technical-analyst.md
+       ├──→ spawn structure-analyst(1w)          → {baseDir}/agents/structure-analyst.md
+       ├──→ spawn fundamental-analyst(mode=long)  → {baseDir}/agents/fundamental-analyst.md
+       └──→ spawn news-analyst(scope=all)         → {baseDir}/agents/news-analyst.md
        │
        ▼
   收集所有 agent 结果 → 检查冲突
@@ -264,10 +297,34 @@ trend-orchestrator
   仓位建议 → {baseDir}/references/position-mgmt.md
        │
        ▼
-  输出标准化报告
+  输出: 做多/做空/观望 + 置信度 + 理由 + 完整报告
 ```
 
-### 4.2 批量扫描流程
+### 4.2 短线分析流程
+
+```
+用户输入 ("分析 SOL 短线")
+       │
+       ▼
+  SKILL.md 意图解析 → 提取 symbol=SOL, mode=short
+       │
+       ▼
+  sessions_spawn analyzer-orchestrator(symbol=SOL, mode=short)
+       │
+       ▼
+  analyzer-orchestrator 路由决策:
+    data-fetcher(timeframe=4H,1d count=96,24)
+       │
+       ├──→ spawn technical-analyst(mode=short)  → {baseDir}/agents/technical-analyst.md
+       ├──→ spawn structure-analyst(4H,1d)       → {baseDir}/agents/structure-analyst.md
+       └──→ spawn news-analyst(scope=crypto)      → {baseDir}/agents/news-analyst.md
+       │  (fundamental-analyst 跳过，仅检查 7 天解锁)
+       │
+       ▼
+  综合技术面 + 结构 + 消息面 → 直接输出 做多/做空/观望 + 关键支撑阻力
+```
+
+### 4.3 批量扫描流程
 
 ```
 用户输入 ("扫描所有主流币")
@@ -285,7 +342,7 @@ trend-orchestrator
   汇总表 + 各币种详细报告链接
 ```
 
-### 4.3 定时调度流程
+### 4.4 定时调度流程
 
 ```
 Cron 触发 (每周一 09:00)
@@ -298,6 +355,36 @@ Cron 触发 (每周一 09:00)
        │
        ▼
   ~/hermes-reports/weekly/2026-W23/BTC-USDT.md
+```
+
+### 4.5 多币种选币流程
+
+```
+用户输入 ("长线选币，只看 L1")
+       │
+       ▼
+  SKILL.md 意图解析 → coin-picker mode=long categories=["l1"]
+       │
+       ▼
+  sessions_spawn coin-picker(mode=long, categories=["l1"], max_coins=20)
+       │
+       ▼
+  coin_screener.py → build_scan_queue() → 写入 .hermes/scan_queue.json
+       │
+       ▼
+  coin_screener.py → split_batches(queue, batch_size=8)
+       │
+       ▼
+  对每批并发: 对每个币种 spawn data-fetcher → 完成后 spawn tech+struct(+fund+news)
+       │
+       ▼
+  coin_screener.py → score_coin(metrics, mode) → 写入 .hermes/batch_results/
+       │
+       ▼
+  全部批次完成 → rank_coins() → 写入 .hermes/comparisons/
+       │
+       ▼
+  输出: 强势 TOP N（做多候选） + 弱势 TOP N（规避/做空候选） + 分维度对比表
 ```
 
 ---
@@ -353,7 +440,7 @@ bash ~/.openclaw/skills/trend-orchestrator/scripts/verify_deps.sh
 | v0.2 | 已完成 | OpenMobius + RootData 集成 + 报告模板增强 |
 | v0.3 | 已完成 | Game Theory + Onchain Analysis + batch_scan.py + cron-setup |
 | v1.0 | 已完成 | Dune/Nansen + quant-model + history_archive.py |
-| 重构 | **进行中** | 路由器 + 子 agent 模式 + agents/ 目录 + `{baseDir}` 规范 |
+| v1.0.1 | **进行中** | 纯路由 + analyzer-orchestrator 双层架构；长线/短线双模式；策略结论输出 |
 
 ---
 
