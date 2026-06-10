@@ -33,8 +33,7 @@ echo "Optional skills:"
 check "game-theory"                 "$SKILLS_DIR/game-theory"
 check "onchain-contract-token-analysis" "$SKILLS_DIR/onchain-contract-token-analysis"
 check "heurist-mesh"               "$SKILLS_DIR/heurist-mesh"
-check "market-sentiment"           "$SKILLS_DIR/market-sentiment"
-check "crypto-4h-trade-brief"      "$SKILLS_DIR/crypto-4h-trade-brief"
+check "ccxt-python"                "$SKILLS_DIR/ccxt-python"
 
 echo ""
 if [ $EXIT_CODE -eq 0 ]; then
