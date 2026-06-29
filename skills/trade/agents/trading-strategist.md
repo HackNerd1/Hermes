@@ -288,20 +288,132 @@ RR = (入场价 - TP1) / (止损价 - 入场价)  # 空头
 
 ### 第五步：调用社区技能执行交易
 
-用户确认后，调用 `okx/agent-skills` 的交易 API 提交限价单。执行规则详见 `{baseDir}/references/trade-execution.md`。
+用户确认后，按以下流程调用 `okx/agent-skills` 执行交易。全部规则详见 `{baseDir}/references/trade-execution.md`。
 
-**执行前检查：**
+**🔴 资金规则（强制）：**
+
+`capital_usd` **必须**使用策略制定时用户指定的资金（即第二步 2.4 仓位计算中的"可用资金"），**禁止**从 `fetch_balance()` 读取合约账户全余额替代。
+
+> 原因：用户可能只愿意投入部分资金（如 100 RMB ≈ $13.8），用全账户余额会导致仓位规模远超用户预期。
+>
+> 示例：用户指定 $13.8，但 `fetch_balance()` 返回 $270.73 → **必须**使用 $13.8 计算仓位，**不可**使用 $270.73。
+
+#### 5.1 杠杆设置
+
+通过 `okx/agent-skills` 的 `set_leverage` 接口独立设置杠杆（不可通过 `create_order` 传入）：
+
+```
+调用 okx/agent-skills:
+  - 操作: set_leverage
+  - symbol: {交易对}
+  - leverage: {策略制定的杠杆倍数}
+  - posSide: {long/short}（long_short_mode 下必须传）
+```
+
+**失败处理：**
+
+```
+⚠️ 杠杆设置失败：{错误详情}
+
+交易已终止。请检查：
+- posSide 参数是否正确（long_short_mode 下必传 long 或 short）
+- 杠杆倍数是否在该交易对允许范围内
+- API Key 是否具有交易权限
+
+策略数据已保留，修正后可重试。
+```
+
+`set_leverage` 失败时**禁止**继续执行后续步骤。
+
+#### 5.2 当前价格偏差检查
+
+（来自 `{baseDir}/references/trade-execution.md` 五）
+
 1. 通过 `okx/agent-skills` 再次获取当前价格
-2. 当前价与策略参考价偏差 < 2% → 直接提交
-3. 偏差 ≥ 2% → 提醒用户并展示偏差，询问是否继续
+2. 计算偏差：`|当前价 - 策略参考价| / 策略参考价 × 100%`
+3. 按偏差范围处理：
 
-**提交订单：**
-- 调用 `okx/agent-skills` 交易接口：
-  - `symbol` = {交易对}
-  - `side` = buy(多头) / sell(空头)
-  - `orderType` = limit（限价单）
-  - `price` = 主入场价
-  - `quantity` = 首次建仓数量
+| 偏差 | 处理 |
+|------|------|
+| < 2% | 继续下一步 |
+| 2-5% | 提醒用户，展示偏差，询问是否继续 |
+| > 5% | 建议取消，重新获取分析数据制定新策略 |
+
+#### 5.3 最小开仓量校验
+
+（来自 `{baseDir}/references/trade-execution.md` 六）
+
+下单前获取交易对市场限制，校验首次建仓量是否满足最小要求：
+
+```
+调用 okx/agent-skills 查询市场信息:
+  - symbol: {交易对}
+  - 提取: market.limits.amount.min
+```
+
+| 条件 | 处理 |
+|------|------|
+| `首次建仓量 ≥ min_qty` | 通过，进入 5.4 参数确认 |
+| `首次建仓量 < min_qty` | **拒绝下单**，输出提示并终止 |
+
+`qty < min_qty` 时输出：
+
+```
+⚠️ 无法下单：计划开仓量不足
+
+| 项目 | 值 |
+|------|-----|
+| 计划开仓量 | {qty} {base_coin} |
+| 最小开仓量 | {min_qty} {base_coin} |
+| 缺口 | {min_qty - qty} {base_coin} |
+
+建议：增加资金（≥${min_value}）或等待更优入场价使开仓量达标。
+```
+
+#### 5.4 下单前参数确认
+
+（来自 `{baseDir}/references/trade-execution.md` 七）
+
+所有校验通过后，回显完整参数供用户最终确认：
+
+```
+## 📋 下单确认
+
+| 参数 | 值 |
+|------|-----|
+| 交易对 | {symbol} |
+| 方向 | 多头/空头 |
+| 入场价 | ${entry_price} |
+| 数量 | {qty_first} {base_coin} |
+| 杠杆 | {leverage}x |
+| 保证金 | ${margin} |
+| 止损价 | ${stop_loss} |
+| 止盈价 | TP1: ${tp1} / TP2: ${tp2} / TP3: ${tp3} |
+
+回复 **"确认提交"** 执行下单，回复 **"取消"** 终止。
+```
+
+| 用户回复 | 处理 |
+|----------|------|
+| "确认提交" | 进入 5.5 提交订单 |
+| "取消" | 终止，不执行交易 |
+
+#### 5.5 提交订单
+
+调用 `okx/agent-skills` 交易接口提交限价单：
+
+```
+调用 okx/agent-skills 交易工具:
+  - symbol: {交易对}
+  - side: buy(多头) / sell(空头)
+  - orderType: limit（限价单）
+  - price: {主入场价}
+  - quantity: {首次建仓数量}
+```
+
+> ⚠️ 杠杆已通过 5.1 独立设置，此处**不再传** leverage 参数（OKX API 不支持 create_order 设置杠杆）。
+
+#### 5.6 执行后处理
 
 **执行成功后**，spawn `trade-tracker` 记录：
 
@@ -345,6 +457,9 @@ sessions_spawn:
 8. **止损必设**：不设止损不提交
 9. **分批建仓**：首次仅 1/3 仓位
 10. **记录委托 trade-tracker**：执行成功后 spawn trade-tracker
+11. **资金禁止替代**：`capital_usd` 必须使用用户指定的资金，禁止用 `fetch_balance()` 账户余额替代
+12. **杠杆失败必终止**：`set_leverage` 失败时禁止继续执行，必须输出错误并终止
+13. **最小开仓必校验**：下单前校验 `qty ≥ market.limits.amount.min`，不满足则拒绝
 
 ## 降级策略
 
@@ -356,4 +471,6 @@ sessions_spawn:
 | okx/agent-skills 交易 API 不可用 | 输出完整策略供用户手动下单，标注"API 不可用，请手动执行" |
 | okx/agent-skills 完全不可用（含数据获取） | 终止流程，提示用户：`⚠️ 外部技能 okx/agent-skills 不可用，无法获取行情数据和执行交易。请检查技能是否正确安装并配置了 API Key。` 不继续后续步骤 |
 | trade-tracker 不可用 | 内联输出交易记录 JSON 和执行摘要，提示用户手动保存到 .hermes |
+| set_leverage 失败 | 终止交易，输出错误详情（含 posSide/杠杆范围/权限排查方向），保留策略数据供手动下单 |
+| 最小开仓量不满足 | 终止交易，提示用户计划开仓量与最小要求之间的缺口，建议增加资金或调整入场价 |
 | 用户 5 分钟未确认 | 提示市场可能变化，建议重新检查报告时效性 |
