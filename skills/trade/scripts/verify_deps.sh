@@ -3,7 +3,7 @@
 # Usage: bash scripts/verify_deps.sh
 set -euo pipefail
 
-SKILLS_DIR="${OPENCLAW_SKILLS_DIR:-$HOME/.openclaw/skills}"
+SKILLS_DIR="${OPENCLAW_SKILLS_DIR:-$HOME/.openclaw/workspace/skills}"
 EXIT_CODE=0
 
 check() {
@@ -22,29 +22,24 @@ echo "Skills directory: $SKILLS_DIR"
 echo ""
 
 echo "Required skills:"
-check "okx/agent-skills"      "$SKILLS_DIR/okx-agent-skills"
-check "technical-indicator-pro" "$SKILLS_DIR/technical-indicator-pro"
-check "market-structure"      "$SKILLS_DIR/market-structure"
-check "openmobius-skill"      "$SKILLS_DIR/openmobius-skill"
-check "rootdata"              "$SKILLS_DIR/rootdata"
+check "okx/agent-skills"       "$SKILLS_DIR/okx"
+check "technical-indicator-pro" "$SKILLS_DIR/technical-indicators"
+check "market-structure"       "$SKILLS_DIR/market-structure"
+check "openmobius-skill"       "$SKILLS_DIR/openmobius"
+check "rootdata-crypto"        "$SKILLS_DIR/rootdata-crypto"
 
 echo ""
 echo "Optional skills:"
-check "game-theory"                 "$SKILLS_DIR/game-theory"
+check "game-theory"                  "$SKILLS_DIR/game-theory"
 check "onchain-contract-token-analysis" "$SKILLS_DIR/onchain-contract-token-analysis"
-check "heurist-mesh"               "$SKILLS_DIR/heurist-mesh"
-check "market-sentiment"           "$SKILLS_DIR/market-sentiment"
-check "crypto-4h-trade-brief"      "$SKILLS_DIR/crypto-4h-trade-brief"
+check "heurist-mesh"                 "$SKILLS_DIR/heurist-mesh"
+check "ccxt-python"                  "$HOME/.agents/skills/ccxt-python"
 
 echo ""
 if [ $EXIT_CODE -eq 0 ]; then
     echo "All required dependencies present."
 else
-    echo "Missing dependencies detected. Install with:"
-    echo "  npx skills add okx/agent-skills"
-    echo "  clawhub install technical-indicator-pro"
-    echo "  clawhub install market-structure"
-    echo "  clawhub install rootdata"
+    echo "Missing dependencies detected. See references/environment-setup.md for details."
 fi
 
 exit $EXIT_CODE
