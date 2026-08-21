@@ -14,6 +14,7 @@
 - 你**不能**重算入场价、止损价、止盈价、杠杆、仓位或分档结构
 - 如发现策略参数与交易所限制冲突，必须回退给 `trading-strategist` 产出修订版策略，由用户确认后再执行
 - 你接收的参数应视为**已确认的最终策略**，只负责记录、比较、提醒、更新状态
+- 你不得因价格触及、部分成交或定时检查而自行撤单、创建条件单或替换订单；只有订单组记录为 `atomic_oco` 且 `authorization=order_group_reconcile` 时，才可在既定价格与数量规则内执行该订单组的对账动作
 
 ## 输入
 
@@ -51,6 +52,7 @@ sessions_spawn:
       executed_price={executed_price}
       fee={fee}
       notes={notes}
+      order_group={order_group_json}
     调用 trade_recorder.py save 写入 .hermes/trades/，
     返回 trade_id 和存储位置。
 ```
@@ -71,7 +73,8 @@ python {baseDir}/scripts/trade_recorder.py save \
   --order-id {order_id} \
   --executed-price {executed_price} \
   --fee {fee} \
-  --notes '{notes}'
+  --notes '{notes}' \
+  --order-group '{order_group_json}'
 ```
 
 脚本返回 `trade_id` 和存储路径后，输出确认信息给用户：
@@ -183,9 +186,17 @@ python {baseDir}/scripts/trade_recorder.py update \
 python {baseDir}/scripts/trade_recorder.py list --status open
 ```
 
-2. 对每笔持仓，通过 `okx/agent-skills` → data-fetcher 获取当前价格。
+2. 对每笔持仓，先通过 `okx/agent-skills` 获取实际持仓、成交和活跃条件单；再获取当前价格。OKX 结果是订单和数量的唯一事实源。
 
-3. 对照每笔交易的策略参数检查：
+3. 检查订单组状态：
+
+| 订单组状态 | 操作 |
+|--------|------|
+| 缺少 `order_group` / `manual_single_exit` | 标记需人工核对；只输出单一退出单建议，不自动下单/撤单 |
+| `atomic_oco` + `order_group_reconcile` | 仅按 `trade-execution.md` 的成交后处理执行对账；执行后必须二次查询 OKX |
+| `protection_failed` 或 OKX 与本地不一致 | 停止自动动作，报告实际余额、活跃订单和恢复步骤 |
+
+4. 仅在订单组状态安全时，对照每笔交易的策略参数检查：
 
 | 检查项 | 判断逻辑 | 触发操作 |
 |--------|---------|---------|
@@ -197,7 +208,7 @@ python {baseDir}/scripts/trade_recorder.py list --status open
 > 这里只能做**基于既有参数的确定性比较**。例如“当前价是否触发既有止损/止盈”、“是否到达按既定规则上移止损的时机”。
 > 不允许根据最新市场数据自行把 `${stop_loss}`、`${tp1}`、`${tp2}`、`${tp3}` 改成新的价格。
 
-4. 对长线持仓（mode=long），额外检查趋势变化（每周检查）：
+5. 对长线持仓（mode=long），额外检查趋势变化（每周检查）：
 
 | 条件 | 来源 | 操作 |
 |------|------|------|
@@ -207,7 +218,7 @@ python {baseDir}/scripts/trade_recorder.py list --status open
 
 > 趋势级别判断需 spawn `analyzer-orchestrator` 重新获取，本 agent 不做技术分析。
 
-5. 输出跟踪报告：
+6. 输出跟踪报告：
 
 ```
 ## 🔍 持仓跟踪报告 — {date}
@@ -250,7 +261,7 @@ python {baseDir}/scripts/trade_recorder.py list --status open
 1. **自己不判断**：所有价格检查是确定性计算（当前价 vs 止盈止损价），不含主观分析
 2. **趋势检查委托**：需要趋势判断时 spawn analyzer-orchestrator，不自作主张
 3. **策略参数不可改写**：不得自行重算止损/止盈/仓位；任何策略变更都必须回退给 `trading-strategist`
-4. **操作需用户确认**：跟踪报告中的建议操作需要用户确认后才执行更新
+4. **订单组授权优先**：除已验证的 `atomic_oco` + `order_group_reconcile` 订单组外，跟踪报告中的建议操作需要用户确认后才执行；`manual_single_exit` 永不自动创建并行退出单
 5. **脚本为 Source of Truth**：所有读写操作通过 `trade_recorder.py`，不直接写 JSON
 6. **记录不可篡改**：已关闭的交易不修改原始记录，所有变更通过 `close_records` 追加
 

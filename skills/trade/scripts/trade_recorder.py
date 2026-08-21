@@ -78,6 +78,22 @@ def _generate_trade_id(symbol: str, direction: str) -> str:
     return f"{symbol_clean}_{direction}_{ts_ms}"
 
 
+def _default_order_group(order_id: str) -> dict:
+    """Return the safe default for a trade without verified atomic exits."""
+    return {
+        "execution_model": "manual_single_exit",
+        "authorization": "per_action",
+        "protection_status": "manual_confirmation_required",
+        "orders": {
+            "entry": {"order_id": order_id},
+            "stop_loss": None,
+            "take_profit": [],
+        },
+        "last_reconciled_at": None,
+        "failure_reason": None,
+    }
+
+
 def save_trade(
     symbol: str,
     direction: str,
@@ -93,6 +109,7 @@ def save_trade(
     fee: float = 0.0,
     notes: str = "",
     analysis_ref: str = "",
+    order_group: Optional[dict] = None,
 ) -> dict:
     """保存新交易记录。
 
@@ -111,6 +128,7 @@ def save_trade(
         fee: 手续费(USD)
         notes: 备注
         analysis_ref: 关联分析报告路径
+        order_group: 已验证的退出订单组；缺失时安全降级为人工单一退出单
 
     Returns:
         包含 trade_id 和 file_path 的 dict
@@ -145,6 +163,9 @@ def save_trade(
         tp_copy = dict(tp)
         tp_copy.setdefault("hit", False)
         tp_with_status.append(tp_copy)
+
+    if order_group is not None and not isinstance(order_group, dict):
+        raise ValueError("order_group 必须是 JSON 对象")
 
     trade = {
         "trade_id": trade_id,
@@ -181,6 +202,7 @@ def save_trade(
             "fee_usd": fee,
             "order_status": "filled",
         },
+        "order_group": order_group or _default_order_group(order_id),
         "close_records": [],
         "notes": notes,
         "analysis_ref": analysis_ref,
@@ -596,6 +618,11 @@ if __name__ == "__main__":
     p_save.add_argument("--fee", type=float, default=0.0)
     p_save.add_argument("--notes", default="")
     p_save.add_argument("--analysis-ref", default="")
+    p_save.add_argument(
+        "--order-group",
+        default="",
+        help="JSON 订单组；缺失时记录为需逐次确认的单一退出单",
+    )
 
     # update
     p_update = sub.add_parser("update", help="更新交易")
@@ -628,6 +655,7 @@ if __name__ == "__main__":
 
     if args.command == "save":
         tp = json.loads(args.take_profit)
+        order_group = json.loads(args.order_group) if args.order_group else None
         result = save_trade(
             symbol=args.symbol,
             direction=args.direction,
@@ -643,6 +671,7 @@ if __name__ == "__main__":
             fee=args.fee,
             notes=args.notes,
             analysis_ref=args.analysis_ref,
+            order_group=order_group,
         )
         print(json.dumps(result, ensure_ascii=False, indent=2))
 

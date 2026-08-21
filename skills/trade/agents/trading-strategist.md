@@ -123,8 +123,9 @@ Glob: .hermes/reports/{symbol}_{mode}_*.json
 
 #### 2.2 止损位 — 依据 `{baseDir}/references/position-mgmt.md` 止损规则
 
-- 多头止损：取报告 S1 下方 1-2%，或 `structure.supports[-1]`（最远支撑）
-- 空头止损：取报告 R1 上方 1-2%，或 `structure.resistances[-1]`（最远阻力）
+- 多头止损：取 `market-structure` 报告的结构失效位（S1 下方或最远有效支撑），再以 `technical-indicator-pro` 的 ATR 加缓冲
+- 空头止损：取 `market-structure` 报告的结构失效位（R1 上方或最远有效阻力），再以 `technical-indicator-pro` 的 ATR 加缓冲
+- 入场价、可用权益、最小下单量和订单能力必须来自 OKX 的实时查询；缺少任一输入则不生成可执行策略
 - **铁律**：止损距离 > 入场价 × 5% → 标注高风险
 - **铁律**：单笔最大亏损 ≤ 总资金 × 风险系数
 
@@ -484,7 +485,15 @@ RR = (入场价 - TP1) / (止损价 - 入场价)  # 空头
 
 主订单成交后，**必须**通过 OKX API 挂载止盈止损条件单。**禁止**仅将止盈止损记录在本地文件而不提交到交易所。
 
-**止损单（市价止损）：**
+**先决条件（不可跳过）**：先在 OKX Demo Trading 验证 `okx/agent-skills` 对该现货交易对的 OCO/仓位级数量约束、撤单和成交查询语义，并将结果写入订单组。只有 `execution_model=atomic_oco` 且用户在下单确认中明确授权该订单组后续撤建，才允许同时挂止损和分档止盈。
+
+若上述任一条件不成立：
+
+- 禁止同时创建会争用同一现货余额的止损单与多个 TP；
+- 创建或保留的退出单必须标记为 `manual_single_exit` 和 `manual_confirmation_required`；
+- 输出待确认的单一退出单操作，不得报告“全自动”“止损会按剩余仓位处理”。
+
+**已验证原子订单组的止损单（市价止损）：**
 
 ```
 调用 okx/agent-skills 条件委托:
@@ -496,7 +505,7 @@ RR = (入场价 - TP1) / (止损价 - 入场价)  # 空头
   - posSide: {long/short}
 ```
 
-**止盈单（每个 TP 独立挂限价止盈）：**
+**已验证原子订单组的止盈单（每个 TP 独立挂限价止盈）：**
 
 ```
 for tp in [TP1, TP2, TP3]:
@@ -522,6 +531,8 @@ for tp in [TP1, TP2, TP3]:
 | TP2 | 限价止盈 | ${tp2} | {qty×0.3} | ✅/❌ |
 | TP3 | 限价止盈 | ${tp3} | {qty×0.2} | ✅/❌ |
 ```
+
+结果中必须额外回显：`execution_model`、`authorization`、每个订单的 ID、`protection_status`。缺少其中任何一项时，订单组状态为 `protection_failed`，不得宣称仓位已受自动保护。
 
 **部分失败时：**
 
