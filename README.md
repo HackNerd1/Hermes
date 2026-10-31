@@ -76,7 +76,7 @@ analyzer-orchestrator（编排器）── 路由决策 + 并行调度 + 铁律�
 | 技能 | 来源 | 角色 | 必装 |
 |------|------|------|------|
 | okx/agent-skills | OKX 官方 | 数据层 — CEX 行情与交易 | ✓ |
-| technical-indicator-pro | ClawHub | 指标层 — 50+ 指标多周期计算 | ✓ |
+| technical-indicators | 本地 skill | 指标层 — 多周期技术指标 | ✓ |
 | market-structure | ClawHub | 形态层 — SMC/ICT 方法论 | ✓ |
 | rootdata | ClawHub | 基本面 — 项目/团队/融资/代币数据 | ✓ |
 | openmobius-skill | GitHub | 知识层 — 964 卡片向量检索+K线标注 | |
@@ -111,7 +111,7 @@ cp -r skills/trade ~/.openclaw/skills/trend-orchestrator
 
 # 安装依赖技能（以 OKX 为例，可按需替换）
 npx skills add okx/agent-skills
-clawhub install technical-indicator-pro
+# technical-indicators 已放在 .claude/skills/technical-indicators
 clawhub install market-structure
 clawhub install rootdata
 

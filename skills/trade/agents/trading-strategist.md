@@ -27,7 +27,7 @@
 
 ## 依赖
 
-本 agent 读取的分析报告由 `analyzer-orchestrator` 生成。analyzer-orchestrator 内部协调所有社区技能（`okx/agent-skills`、`technical-indicator-pro`、`market-structure`、`RootData`）和 5 个专业子 agent，输出结构化 JSON 到 `.hermes/reports/`。
+本 agent 读取的分析报告由 `analyzer-orchestrator` 生成。analyzer-orchestrator 内部协调所有社区技能（`okx/agent-skills`、`technical-indicators`、`market-structure`、`RootData`）和 5 个专业子 agent，输出结构化 JSON 到 `.hermes/reports/`。
 
 交易执行通过 `okx/agent-skills` 的交易接口完成，规则详见 `{baseDir}/references/trade-execution.md`。
 
@@ -123,8 +123,8 @@ Glob: .hermes/reports/{symbol}_{mode}_*.json
 
 #### 2.2 止损位 — 依据 `{baseDir}/references/position-mgmt.md` 止损规则
 
-- 多头止损：取 `market-structure` 报告的结构失效位（S1 下方或最远有效支撑），再以 `technical-indicator-pro` 的 ATR 加缓冲
-- 空头止损：取 `market-structure` 报告的结构失效位（R1 上方或最远有效阻力），再以 `technical-indicator-pro` 的 ATR 加缓冲
+- 多头止损：取 `market-structure` 报告的结构失效位（S1 下方或最远有效支撑），再以 `technical-indicators` 的 ATR 加缓冲
+- 空头止损：取 `market-structure` 报告的结构失效位（R1 上方或最远有效阻力），再以 `technical-indicators` 的 ATR 加缓冲
 - 入场价、可用权益、最小下单量和订单能力必须来自 OKX 的实时查询；缺少任一输入则不生成可执行策略
 - **铁律**：止损距离 > 入场价 × 5% → 标注高风险
 - **铁律**：单笔最大亏损 ≤ 总资金 × 风险系数

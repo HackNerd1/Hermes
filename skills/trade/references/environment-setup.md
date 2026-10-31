@@ -9,7 +9,7 @@
 | 技能 | 用途 | 安装 |
 |------|------|------|
 | `okx/agent-skills` | 行情数据获取 + CEX 交易执行 | `clawhub install okx-agent-skills` |
-| `technical-indicator-pro` | 多周期技术指标计算（EMA/RSI/MACD/ADX/布林带） | `clawhub install technical-indicator-pro` |
+| `technical-indicators` | 多周期技术指标计算（EMA/RSI/MACD/ADX/布林带） | 本地 `.claude/skills/technical-indicators` |
 | `market-structure` | ICT/SMC 结构分析（BOS/CHoCH/FVG/Order Block） | `clawhub install market-structure` |
 | `rootdata` | 代币基本面数据（团队/融资/代币经济/解锁） | `clawhub install rootdata` |
 
@@ -78,7 +78,7 @@ bash skills/trade/scripts/verify_deps.sh
 
 检查清单：
 - [ ] `okx-agent-skills` 可用，API Key 配置正确
-- [ ] `technical-indicator-pro` 可用
+- [ ] `technical-indicators` 可用
 - [ ] `market-structure` 可用
 - [ ] `rootdata` 可用
 - [ ] `.hermes/` 目录可写（分析报告和交易记录落盘）

@@ -12,13 +12,13 @@
 
 ## 止损规则
 
-- 止损位必须由 `market-structure` 的实时结构失效位生成，并使用 `technical-indicator-pro` 的 ATR 计算缓冲；本文件不保存或推导具体市场价格。
+- 止损位必须由 `market-structure` 的实时结构失效位生成，并使用 `technical-indicators` 的 ATR 计算缓冲；本文件不保存或推导具体市场价格。
 - 止损距离 > 总资金 2% → 减小仓位直到满足 2% 规则
 - 盈利 > 10% → 止损移到成本价（保本止损）
 
 ## 止盈规则
 
-- 趋势减仓信号必须由 `technical-indicator-pro` 的实时周线 ADX/MACD/EMA 结果产生；本文件只定义减仓比例。
+- 趋势减仓信号必须由 `technical-indicators` 的实时周线 ADX/MACD/EMA 结果产生；本文件只定义减仓比例。
 - ADX 从 >30 回落至 <25 → 减仓 50%
 - 周线 MACD 死叉 → 减仓 70%
 - 周线 EMA21 下穿 EMA55 → 清仓

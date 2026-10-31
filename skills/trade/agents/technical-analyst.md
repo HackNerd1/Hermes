@@ -14,7 +14,7 @@
 
 ### 长线模式 (mode=long)
 
-调用 technical-indicator-pro，主看周线指标：
+调用 technical-indicators，主看周线指标：
 
 **趋势类：**
 - 周线 EMA 21/55（定方向）
@@ -37,7 +37,7 @@
 
 ### 短线模式 (mode=short)
 
-调用 technical-indicator-pro，主看 4H + 日线指标：
+调用 technical-indicators，主看 4H + 日线指标：
 
 **趋势类：**
 - 4H EMA 9/21/55（短线趋势）

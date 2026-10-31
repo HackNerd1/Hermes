@@ -23,7 +23,7 @@ echo ""
 
 echo "Required skills:"
 check "okx/agent-skills"       "$SKILLS_DIR/okx"
-check "technical-indicator-pro" "$SKILLS_DIR/technical-indicators"
+check "technical-indicators" "$SKILLS_DIR/technical-indicators"
 check "market-structure"       "$SKILLS_DIR/market-structure"
 check "openmobius-skill"       "$SKILLS_DIR/openmobius"
 check "rootdata-crypto"        "$SKILLS_DIR/rootdata-crypto"
