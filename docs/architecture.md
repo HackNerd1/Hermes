@@ -283,7 +283,7 @@ Hermes/
 ```
 trend-orchestrator
   ├── [必装] okx/agent-skills          ← OKX 官方，数据层
-  ├── [必装] technical-indicator-pro   ← ClawHub，指标层
+  ├── [必装] technical-indicators   ← ClawHub，指标层
   ├── [必装] market-structure          ← ClawHub，形态层
   ├── [必装] rootdata                  ← ClawHub，基本面
   ├── [可选] openmobius-skill          ← GitHub，知识库
@@ -525,7 +525,7 @@ cp -r skills/trend-orchestrator ~/.openclaw/skills/
 
 # 依赖安装
 npx skills add okx/agent-skills
-clawhub install technical-indicator-pro
+clawhub install technical-indicator
 clawhub install market-structure
 clawhub install rootdata
 

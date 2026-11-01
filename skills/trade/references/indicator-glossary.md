@@ -55,6 +55,5 @@
 
 ## ATR（平均真实波幅）
 
-- 用于计算合理止损距离
-- 止损建议：1.5-2 倍周线 ATR
+- 周线 ATR 是止损缓冲的输入（缓冲 = 0.5×周线 ATR，加在 `market-structure` 结构失效位之外）；定义见 [position-mgmt.md](./position-mgmt.md)。
 - ATR 急剧放大 = 波动率飙升，减小仓位

@@ -121,18 +121,13 @@ Glob: .hermes/reports/{symbol}_{mode}_*.json
 - 辅助入场位：R2 或主入场位上方 1-2%
 - 入场方式：限价单（Limit Order）
 
-#### 2.2 止损位 — 依据 `{baseDir}/references/position-mgmt.md` 止损规则
+#### 2.2 止损位
 
-- 多头止损：取 `market-structure` 报告的结构失效位（S1 下方或最远有效支撑），再以 `technical-indicators` 的 ATR 加缓冲
-- 空头止损：取 `market-structure` 报告的结构失效位（R1 上方或最远有效阻力），再以 `technical-indicators` 的 ATR 加缓冲
+- 止损价与止损距离：按 [position-mgmt.md](../references/position-mgmt.md) 止损规则生成（结构失效位 ± 0.5×周线 ATR）
+- 止损锚点 = `market-structure` 的结构失效位；报告的 S1/R1 用于入场，R2/S2 及延伸位用于止盈。
 - 入场价、可用权益、最小下单量和订单能力必须来自 OKX 的实时查询；缺少任一输入则不生成可执行策略
-- **铁律**：止损距离 > 入场价 × 5% → 标注高风险
-- **铁律**：单笔最大亏损 ≤ 总资金 × 风险系数
-
-风险系数映射（position-mgmt.md 2% 规则 + risk_tolerance）：
-- conservative → 1%
-- moderate → 2%
-- aggressive → 3%
+- **铁律**：止损距离 > 入场价 × 5% → 按 [position-mgmt.md](../references/position-mgmt.md) 标注高风险
+- **铁律**：单笔最大亏损 ≤ 总资金 × 风险系数（系数表见 [position-mgmt.md](../references/position-mgmt.md)）
 
 #### 2.3 止盈位 — 依据报告阻力/支撑层级
 
@@ -142,7 +137,7 @@ Glob: .hermes/reports/{symbol}_{mode}_*.json
 | TP2 | 30-40% | 多头: 报告 R2 / 空头: 报告 S2 |
 | TP3 | 剩余 | 多头: R2 × 1.05 / 空头: S2 × 0.95 |
 
-止损移动规则（position-mgmt.md 止盈规则）：
+止损移动规则（唯一定义见 [position-mgmt.md](../references/position-mgmt.md) 止损规则）：
 - TP1 触及 → 止损移至成本价
 - TP2 触及 → 止损移至 TP1
 
@@ -156,17 +151,11 @@ Glob: .hermes/reports/{symbol}_{mode}_*.json
 建议仓位比例 = 仓位价值(USD) / 可用资金
 ```
 
-**仓位上限检查**（来自 position-mgmt.md + long-term-rules.md，结合报告趋势数据）：
+**仓位上限检查** — 分级与数值只在 [position-mgmt.md](../references/position-mgmt.md) 维护，本文件按报告字段查表执行：
 
-| 条件（取报告字段） | 上限 |
-|------|------|
-| 报告 trend.adx < 20（无趋势） | 0%（空仓），跳过后续 |
-| 报告 trend.adx 20-25（趋势初现） | 10-20%（轻仓） |
-| 报告 trend.adx 25-40（趋势明确） | 30-50%（标准仓） |
-| 报告 trend.adx > 40（极端趋势） | 不加仓 |
-| 非 BTC/ETH | ≤ 20% |
-| BTC/ETH | ≤ 30% |
-| 永不满仓 | < 100% |
+- 报告 `trend.adx < 20` → 空仓，跳过后续；20–25 轻仓、25–40 标准仓、>40 不加仓；重仓 60–80% 需「强趋势 + 日线回调确认且 ADX≤40」（仅 BTC/ETH）。
+- 币种硬顶：BTC/ETH 80%（对齐 `technical-indicators` `position_sizer.MAX_POSITION_PCT`）、非 BTC/ETH 20%；山寨币上限公式见 [position-mgmt.md](../references/position-mgmt.md)。
+- 名义仓位 = min(仓位分级上沿, 币种硬顶, 风险反推仓位)。`market-structure` 不规定仓位比例。
 
 **分批建仓**（long-term-rules.md）：
 - 首次建仓 ≤ 计划仓位 1/3
@@ -240,9 +229,9 @@ RR = (入场价 - TP1) / (止损价 - 入场价)  # 空头
 
 | 项目 | 详情 | 依据 |
 |------|------|------|
-| 止损价 | ${sl} | 报告支撑/阻力位 + 缓冲 |
+| 止损价 | ${sl} | [position-mgmt.md](../references/position-mgmt.md) 止损规则 |
 | 止损距离 | {pct}% | |
-| 最大亏损 | ${loss}（{pct}%） | position-mgmt.md |
+| 最大亏损 | ${loss}（{pct}%） | [position-mgmt.md](../references/position-mgmt.md) |
 
 ---
 

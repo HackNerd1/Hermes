@@ -32,7 +32,7 @@
 │  │                                                    │  │
 │  │  ① 意图解析 → 交易对 + 时间框架 + 分析深度            │  │
 │  │  ② 数据获取 → okx/agent-skills（OKX 官方）拉行情      │  │
-│  │  ③ 技术分析 → technical-indicator-pro 多周期指标      │  │
+│  │  ③ 技术分析 → technical-indicators 多周期指标      │  │
 │  │  ④ 形态识别 → market-structure / openmobius         │  │
 │  │  ⑤ 基本面   → RootData + Game Theory + 链上审计      │  │
 │  │  ⑥ 消息面   → WebSearch 搜最新动态                   │  │
@@ -83,11 +83,11 @@
 | 技能 | 版本 | 指标数 | 多周期 | Top 50 | 结论 |
 |------|------|--------|--------|--------|------|
 | ~~technical-analyst~~ | v0.1.0 | ~8 个 | 不明确 | 未上榜 | ❌ 太早期 |
-| **technical-indicator-pro** | - | **50+** | **支持** | - | **✅ 首选** |
+| **technical-indicators** | - | **50+** | **支持** | - | **✅ 首选** |
 | openclaw-quant | - | 50+ | 支持 | - | 备选（附带回测） |
 | kline-pattern-recognition | - | K线形态 | - | - | 辅助 |
 
-**选 `technical-indicator-pro`**：50+ 指标、多时间框架切换（周线/日线/4H）、自定义参数、信号标注。长线分析核心依赖多周期切换能力——周线定方向、日线找入场、4H 做确认。`technical-analyst` 只有 v0.1.0 且 ~8 个基础指标，不够用。
+**选 `technical-indicators`**：50+ 指标、多时间框架切换（周线/日线/4H）、自定义参数、信号标注。长线分析核心依赖多周期切换能力——周线定方向、日线找入场、4H 做确认。`technical-analyst` 只有 v0.1.0 且 ~8 个基础指标，不够用。
 
 ### 知识/形态识别层
 
@@ -115,7 +115,7 @@
 |------|------|------|----------|
 | **trend-orchestrator** | 自建 | 主脑，7 步固定流程调度，对照长线铁律输出报告 | 手动部署到 `~/.openclaw/skills/` |
 | **okx/agent-skills** | OKX 官方 | 数据层，82 工具 CEX 行情/链上数据 | `npx skills add okx/agent-skills` |
-| **technical-indicator-pro** | ClawHub | 指标层，50+ 指标多周期计算 | `clawhub install technical-indicator-pro` |
+| **technical-indicators** | 本地 skill | 指标层，多周期技术指标 | `.claude/skills/technical-indicators` |
 | **market-structure** | ClawHub | 形态层，SMC/ICT 方法论分析 | `clawhub install market-structure` |
 | **openmobius-skill** | GitHub | 知识层，964 卡片向量检索+K线标注 | `git clone + python install.py` |
 | **RootData** | ClawHub | 基本面，项目/团队/融资/代币数据 | `clawhub install rootdata` |
@@ -302,7 +302,7 @@ argument-hint: "<交易对> [时间框架]"
     - 优先用 demo 环境验证连通性
     - 超时 30 秒自动跳过，标注数据缺失
 
-第三步：技术分析 → 调用 technical-indicator-pro
+第三步：技术分析 → 调用 technical-indicators
   计算指标（长线减噪版本）：
     趋势类：
       - EMA 21/55/200（日线）
@@ -409,7 +409,7 @@ argument-hint: "<交易对> [时间框架]"
 | 场景 | 处理方式 |
 |------|----------|
 | okx/agent-skills 不可用 | 尝试 crypto (CCXT) → 手动输入价格区间 |
-| technical-indicator-pro 不可用 | Claude 基于原始 K 线数据手工计算关键指标 |
+| technical-indicators 不可用 | Claude 基于原始 K 线数据手工计算关键指标 |
 | market-structure + openmobius 均不可用 | 跳过 ICT 结构分析，标注「知识库不可用」 |
 | RootData 不可用 | WebSearch 替代搜索项目基本面信息 |
 | 全部外部技能不可用 | 降级为纯 Claude 分析 + WebSearch，标注数据来源受限 |
@@ -458,9 +458,8 @@ argument-hint: "<交易对> [时间框架]"
 ## 三、仓位管理铁律
 
 ### 3.1 单币种上限
-- 单一币种不超过总仓位的 20%
-- BTC/ETH 可放宽至 30%
-- **铁律：绝不突破单币种上限，不受 FOMO 驱动**
+- 仓位分级、币种硬顶、风险反推与山寨币上限公式只在 `skills/trade/references/position-mgmt.md` 维护，本文档不重复数值。
+- **铁律：绝不突破仓位硬顶，不受 FOMO 驱动**
 
 ### 3.2 分批建仓
 - 首次建仓不超过计划仓位的 1/3
@@ -469,8 +468,7 @@ argument-hint: "<交易对> [时间框架]"
 - **铁律：禁止一次性满仓**
 
 ### 3.3 止损铁律
-- 每笔交易止损不超过总资金的 2%
-- 止损位 = 周线前低（多头）/ 周线前高（空头）
+- 止损口径（结构失效位 ± 0.5×周线 ATR）只在 `skills/trade/references/position-mgmt.md` 维护，本文档不重复。
 - **铁律：开仓前必须设定止损位，不设止损不开仓**
 
 ## 四、宏观环境铁律
@@ -594,29 +592,7 @@ argument-hint: "<交易对> [时间框架]"
 
 ### position-mgmt.md — 仓位管理规则
 
-```markdown
-# 仓位管理规则
-
-## 仓位分级
-
-| 级别 | 仓位比例 | 触发条件 |
-|------|----------|----------|
-| 空仓 | 0% | 周线 ADX<20 或趋势不明 |
-| 轻仓 | 10-20% | 周线趋势初现，ADX 20-25 |
-| 标准仓 | 30-50% | 周线趋势明确，ADX 25-40 |
-| 重仓 | 60-80% | 周线强趋势 + 日线回调确认（仅 BTC/ETH） |
-| 满仓 | 禁止 | 永不满仓 |
-
-## 止损规则
-- 止损位 = 周线最近前低（多头）或前高（空头）
-- 止损距离 > 总资金 2% → 减小仓位直到满足 2% 规则
-- 盈利 > 10% → 止损移到成本价（保本止损）
-
-## 止盈规则
-- 周线趋势转弱（ADX 从 >30 回落至 <25）→ 减仓 50%
-- 周线 MACD 死叉 → 减仓 70%
-- 周线 EMA21 下穿 EMA55 → 清仓
-```
+当前版本以 `skills/trade/references/position-mgmt.md` 为准（仓位分级/硬顶、风险系数、止损与止盈的唯一定义点），本文档不再内嵌副本，避免多处维护。止损口径：结构失效位 ± 0.5×周线 ATR，具体价格由执行层按实时数据生成。
 
 ---
 
@@ -674,7 +650,7 @@ openclaw --version
 npx skills add okx/agent-skills
 
 # 技术分析：50+ 指标多周期
-clawhub install technical-indicator-pro
+# technical-indicators 已放在 .claude/skills/technical-indicators
 
 # 形态识别：SMC/ICT 方法论
 clawhub install market-structure
@@ -754,7 +730,7 @@ cp -r trend-orchestrator <workspace>/skills/
 
 | 版本 | 内容 | 预计时间 |
 |------|------|----------|
-| v0.1 | 主脑 SKILL.md + 长线铁律 + 指标手册；安装 okx/agent-skills + technical-indicator-pro + market-structure | 1-2 天 |
+| v0.1 | 主脑 SKILL.md + 长线铁律 + 指标手册；安装 okx/agent-skills + technical-indicators + market-structure | 1-2 天 |
 | v0.2 | 集成 OpenMobius 知识库；集成 RootData 基本面；报告模板化 | 1 周 |
 | v0.3 | 添加 Game Theory + Onchain Analysis 深度分析；多币种批量扫描；cron 定时分析 | 2 周 |
 | v1.0 | 引入 Dune/Nansen 链上数据；自定义基本面量化模型；历史分析归档与回看 | 1 个月 |
@@ -779,11 +755,11 @@ cp -r trend-orchestrator <workspace>/skills/
 | 技能 | 版本 | 指标数 | 多周期 | 综合评分 |
 |------|------|--------|--------|----------|
 | technical-analyst | v0.1.0 (2026-01) | ~8 (RSI/MACD/SMA/BB) | 未明确 | ★★☆ |
-| **technical-indicator-pro** | 成熟版 | **50+** (含 KDJ/ATR/OBV/CCI/DMI) | **明确支持** | **★★★★** |
+| **technical-indicators** | 成熟版 | **50+** (含 KDJ/ATR/OBV/CCI/DMI) | **明确支持** | **★★★★** |
 | openclaw-quant | 成熟版 | 50+ | 支持 | ★★★★ (附带回测，偏重量) |
 | kline-pattern-recognition | - | K线形态识别 | - | ★★★ (单一功能) |
 
-**结论**：`technical-indicator-pro` 在指标数量和周期支持上明显优于 `technical-analyst`。长线分析的核心需求是周线/日线/4H 多周期切换，Pro 版对此有明确支持。`openclaw-quant` 更强但偏量化执行，对分析场景来说过重。
+**结论**：`technical-indicators` 在指标数量和周期支持上明显优于 `technical-analyst`。长线分析的核心需求是周线/日线/4H 多周期切换，使用本地 skill `technical-indicators`。`openclaw-quant` 更强但偏量化执行，对分析场景来说过重。
 
 ### A.3 知识/形态识别层对比
 
@@ -814,7 +790,7 @@ cp -r trend-orchestrator <workspace>/skills/
 |------|-----------|----------|---------------------|
 | 开发量 | 高（全部手写） | 零 | 中（只写编排层+知识库） |
 | OKX 对接 | 手写 CCXT 封装 | OKX 官方 Agent Trade Kit | 复用 OKX 官方 |
-| 技术指标 | 手写 pandas_ta | 50+ 指标开箱即用 | 复用 technical-indicator-pro |
+| 技术指标 | 手写 pandas_ta | 50+ 指标开箱即用 | 复用 technical-indicators |
 | 形态识别 | 无 | ICT/SMC 双源 | market-structure + OpenMobius |
 | 基本面 | 手写搜索逻辑 | 无 | RootData + Game Theory + 链上审计 |
 | 知识库 | 手写 references | OpenMobius 964 卡片 | 双知识库 + 自定义长线铁律 |

@@ -97,7 +97,7 @@ analyzer-orchestrator (子 agent)
 | 数据项 | 规范链路 | 实际执行 | 差异 |
 |--------|---------|---------|------|
 | 价格/K线 | data-fetcher → OKX | 直接 OKX CLI | ✅ 数据真实，但缺格式校验 |
-| RSI/ADX/EMA | technical-analyst → technical-indicator-pro | Python 自算 | ✅ 公式正确，但缺乏标准化 |
+| RSI/ADX/EMA | technical-analyst → technical-indicators | Python 自算 | ✅ 公式正确，但缺乏标准化 |
 | Wyckoff 阶段 | structure-analyst → market-structure | 简单规则判断 | ⚠️ 精度差 |
 | 基本面评分 | fundamental-analyst → rootdata | 硬编码估值 | ❌ 无真实数据 |
 | 新闻情绪 | news-analyst → web_search | web_search 全部失败（kimi provider 不支持, searxng 未配置） | ❌ 完全缺失，报告标注了数据缺失 |
