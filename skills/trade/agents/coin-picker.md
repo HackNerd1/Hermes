@@ -94,7 +94,7 @@ dimensions: {
 ...
 ```
 
-### 第二步：分批并发分析
+### 第三步：分批并发分析
 
 调用 `{baseDir}/scripts/coin_screener.py` → `split_batches(queue, batch_size)` 拆分批次。
 
@@ -151,7 +151,24 @@ sessions_spawn:
 3. 按方向分组：强势（做多候选）/ 弱势（做空候选）/ 中性
 4. 对比结果写入 `.hermes/comparisons/{timestamp}_{mode}.json`
 
-### 第五步：输出精选结果
+### 第五步：组合层过滤
+
+横向排名完成后，不能把所有强势币种都当成可同时持有的组合。调用：
+
+```
+select_portfolio(ranked, max_positions=5, max_per_category=2)
+format_portfolio(selected)
+```
+
+组合约束（与 `references/position-mgmt.md` 一致）：
+
+- 最多 **5 个币种**；同类别最多 **2 个**（用 category 作为相关性粗代理）。
+- 若已有 60 日相关系数，同相关系数 > 0.7 的币种合计最多 2 个，替代 category 代理。
+- BTC/ETH 可同时入选；山寨合计名义仓位上限见 `position-mgmt.md`。
+- 长线模式：弱势榜只标注“规避”，**不输出做空组合**。
+- `scored_coins` 必须保留 `category` 字段；缺失时组合退化为按排名取前 5，并在报告中标注。
+
+### 第六步：输出精选结果
 
 ## 输出格式
 
@@ -199,7 +216,8 @@ sessions_spawn:
 5. **中间结果落盘**：每批次结果写入 `.hermes/` 目录，防止中断丢失
 6. **降级可用**：某币种子 agent 失败 → 该维度评分记为 0，标注"数据缺失"
 7. **长线不推荐做空**：长线模式下弱势币种标注"规避"，不输出做空建议
-8. **不编造数据**：子 agent 返回不确定数据 → 评分表中标注 "N/A"
+8. **组合层过滤**：建议组合最多 5 个币种、同类别最多 2 个；不要把所有强势币种都当成可同时持有
+9. **不编造数据**：子 agent 返回不确定数据 → 评分表中标注 "N/A"
 
 ## 降级策略
 

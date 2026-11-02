@@ -19,7 +19,9 @@
 **趋势类：**
 - 周线 EMA 21/55（定方向）
 - 日线 EMA 21/55/200（找入场）
-- 周线 ADX（>25 有趋势，>40 强趋势，<20 无趋势）
+- 周线 ADX（>25 有趋势，>40 强趋势，<20 趋势弱；**只用于仓位系数，不单独决定入场**）
+- 周线 Donchian 10 周通道：前 10 周最高收盘 / 最低收盘（突破入场 + 跟踪止损）
+- 90 日已实现波动率（年化，用于波动率目标仓位）
 
 **动量类：**
 - 周线 RSI（长线核心动量指标，日线 RSI 噪音大）
@@ -79,7 +81,12 @@ strength: {强/中/弱}
 
 ema:
   primary: {EMA 排列状态}
+  ema21: {value}                # 周线 EMA21
+  ema55: {value}                # 周线 EMA55
+  ema21_slope: {up|flat|down}   # 最近 4 根周线 EMA21 的变化方向
+  spread_atr: {|EMA21−EMA55| / 周线 ATR}
   secondary: {辅助周期 EMA 状态}
+  price_above_ema200: {true|false}
 
 rsi:
   primary: {value + zone}
@@ -89,14 +96,27 @@ macd:
   primary: {金叉/死叉 + 柱状体方向}
 
 {长线专属:}
-adx: {value + zone}
+adx: {value + zone}   # 仅仓位系数，不是入场闸门
 bollinger: {bandwidth trend}
+breakout:
+  channel_high_10w: {price}
+  channel_low_10w: {price}
+  state: {above|inside|below}
+  trigger_long: {channel_high_10w + 1 tick}
+  trigger_short: {channel_low_10w - 1 tick}
+trailing:
+  long_stop: {Donchian 中轨 =（前 10 周最高收盘 + 前 10 周最低收盘）/ 2}
+  short_stop: {Donchian 中轨}
+volatility:
+  atr_daily: {日线 ATR(20)，Wilder}   # 初始止损 = 入场价 ∓ 2×N
+  atr_weekly: {value}
+  realized_vol_90d: {annualized pct}
 
 {短线专属:}
 bollinger_4h: {价格在布林带中位置}
 support_resistance: [{关键支撑阻力位}]
 
-volume_analysis: {healthy/divergence/weak}
+volume_analysis: {healthy/divergence/weak}   # 仅叙述与评分，不影响仓位
 signals: [{key signals with confidence}]
 conflicts: [{timeframe conflicts if any}]
 

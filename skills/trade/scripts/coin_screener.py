@@ -5,6 +5,7 @@
 所有推理判断保留在 coin-picker.md agent 工作流中。
 """
 
+from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -42,6 +43,10 @@ LONG_WATCHLIST = [
     {"symbol": "VET/USDT", "category": "enterprise", "mc_rank": 29},
     {"symbol": "FTM/USDT", "category": "l1", "mc_rank": 30},
 ]
+
+# 组合层约束（与 references/position-mgmt.md 保持一致）
+MAX_POSITIONS = 5
+MAX_PER_CATEGORY = 2
 
 # 短线模式 — 按 24h 成交量筛选（由 agent 运行时动态获取，此处为 fallback）
 SHORT_WATCHLIST = [
@@ -220,6 +225,65 @@ def rank_coins(
         c["group"] = "中性"
 
     return {"bullish": bullish, "bearish": bearish, "neutral": neutral}
+
+
+def select_portfolio(
+    ranked: dict,
+    max_positions: int = MAX_POSITIONS,
+    max_per_category: int = MAX_PER_CATEGORY,
+    top_n: int = 10,
+) -> list[dict]:
+    """从强势榜中选出建议组合。
+
+    用 category 作为相关性的粗代理：同类别最多 max_per_category 个，
+    总持仓不超过 max_positions。若调用方已有 60 日相关系数，应先按
+    相关性过滤后再传入。
+
+    Args:
+        ranked: rank_coins() 的输出
+        max_positions: 组合最大持仓数
+        max_per_category: 同类别最大持仓数
+        top_n: 从强势榜前 N 个中挑选
+
+    Returns:
+        选中的币种列表（保持原排名顺序）
+    """
+    picked = []
+    cat_count = defaultdict(int)
+    for c in ranked.get("bullish", [])[:top_n]:
+        category = c.get("category")
+        if category:
+            if cat_count[category] >= max_per_category:
+                continue
+            cat_count[category] += 1
+        picked.append(c)
+        if len(picked) >= max_positions:
+            break
+    return picked
+
+
+def format_portfolio(selected: list[dict]) -> str:
+    """格式化建议组合表。"""
+    if not selected:
+        return "当前没有满足组合约束的强势币种，建议空仓。"
+    lines = [
+        "## 建议组合（组合层已过滤）",
+        "",
+        "| 排名 | 交易对 | 类别 | 综合评分 | 建议角色 |",
+        "|------|--------|------|----------|----------|",
+    ]
+    for i, c in enumerate(selected, 1):
+        role = "核心" if i <= 2 else "卫星"
+        lines.append(
+            f"| {i} | {c.get('symbol')} | {c.get('category', '-')} | "
+            f"{c.get('score', '-')} | {role} |"
+        )
+    lines.extend([
+        "",
+        "> 组合上限：最多 5 个币种；同类别最多 2 个；"
+        "总名义仓位与单币种上限见 `references/position-mgmt.md`。",
+    ])
+    return "\n".join(lines)
 
 
 def format_comparison_table(

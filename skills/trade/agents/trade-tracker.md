@@ -91,7 +91,7 @@ python {baseDir}/scripts/trade_recorder.py save \
 | 入场价 | ${executed_price} |
 | 数量 | {quantity} |
 | 止损 | ${stop_loss} |
-| 止盈 | TP1 TP2 TP3 |
+| 止盈/出场 | 跟踪出场（可选止盈默认关闭） |
 | 记录位置 | .hermes/trades/{YYYY-MM}/{trade_id}.json |
 ```
 
@@ -147,7 +147,7 @@ python {baseDir}/scripts/trade_recorder.py summary
 
 ### 模式 C：更新交易状态（用户触发或自动跟踪）
 
-#### 部分平仓（TP 触发）
+#### 部分平仓（可选止盈触发，默认关闭）
 
 ```bash
 python {baseDir}/scripts/trade_recorder.py update \
@@ -201,24 +201,26 @@ python {baseDir}/scripts/trade_recorder.py list --status open
 | 检查项 | 判断逻辑 | 触发操作 |
 |--------|---------|---------|
 | 止损是否触发 | 当前价 ≤ 止损价（多头）/ 当前价 ≥ 止损价（空头） | 提醒用户止损已触发，询问是否平仓 |
-| TP1 是否触及 | 当前价 ≥ TP1 价格（多头）/ 当前价 ≤ TP1 价格（空头） | 提醒 TP1 已触及，建议部分平仓并上移止损 |
-| TP2/TP3 是否触及 | 同上逻辑 | 提醒用户按止盈计划操作 |
-| 止损是否需上移 | 之前 TP 触及且 stop_loss_updated 为空 | 建议移动止损至成本价 |
+| 跟踪止损是否需上移/下移 | 从最新报告读取 `trailing.long_stop` / `trailing.short_stop`（Donchian 中轨）；多头取 `max(当前止损, trailing.long_stop)`，空头取 `min(当前止损, trailing.short_stop)`；中轨越过现价时不采用 | 建议按跟踪位更新（只上移/下移，不反向） |
+| 可选止盈是否触及（默认关闭） | 用户启用时：浮盈 ≥ 4R | 提醒可平 1/4；**不**把止损移到成本 |
+| TP2/TP3 | 默认不启用 | 无操作 |
 
 > 这里只能做**基于既有参数的确定性比较**。例如“当前价是否触发既有止损/止盈”、“是否到达按既定规则上移止损的时机”。
-> 不允许根据最新市场数据自行把 `${stop_loss}`、`${tp1}`、`${tp2}`、`${tp3}` 改成新的价格。
+> 跟踪止损位必须从 `analyzer-orchestrator` 最新报告的 `trailing.long_stop` / `trailing.short_stop` 读取；本 agent 不自行计算通道或改写策略参数。
 
 5. 对长线持仓（mode=long），额外检查趋势变化（每周检查）：
 
 | 条件 | 来源 | 操作 |
 |------|------|------|
-| 周线 MACD 死叉 | 需重新获取分析 | 提醒减仓 70% |
-| 周线 EMA21 下穿 EMA55 | 需重新获取分析 | 提醒清仓 |
-| 周线 ADX 从 >30 回落至 <25 | 需重新获取分析 | 提醒减仓 50% |
+| 周线 MACD 死叉 | 需重新获取分析 | 不操作（仅提示）；退出由 Donchian 中轨跟踪止损负责 |
+| 周线 EMA21 下穿 EMA55 | 需重新获取分析 | 提醒按趋势系数调仓（0.3 → 轻仓；0 → 清仓） |
+| 周线 ADX 从 >30 回落至 <25 | 需重新获取分析 | 不再单独减仓；只在跟踪报告中提示仓位系数变化 |
 
 > 趋势级别判断需 spawn `analyzer-orchestrator` 重新获取，本 agent 不做技术分析。
 
-6. 输出跟踪报告：
+6. 周中挂单检查：列出未成交的突破单、初始止损、跟踪止损、可选止盈（默认不挂）；成交后按既有参数记录。周中不因价格波动改策略参数。
+
+7. 输出跟踪报告：
 
 ```
 ## 🔍 持仓跟踪报告 — {date}
@@ -227,7 +229,7 @@ python {baseDir}/scripts/trade_recorder.py list --status open
 
 | 交易 ID | 交易对 | 触发事件 | 建议操作 |
 |----------|--------|---------|---------|
-| {id} | {symbol} | TP1 触及 (+{pct}%) | 平仓 50%，止损上移至成本价 |
+| {id} | {symbol} | 跟踪止损上移（{old}→{new}） | 按 10 周通道更新止损，不平仓 |
 | ... | ... | ... | ... |
 
 ### 正常持仓

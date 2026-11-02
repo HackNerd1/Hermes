@@ -90,7 +90,10 @@ sessions_spawn:
 1. 读取 `{baseDir}/references/long-term-rules.md`，逐条对照
 2. 读取 `{baseDir}/references/quant-model.md`，执行量化评分
 3. 参考 `{baseDir}/references/position-mgmt.md`，给出仓位建议
-4. 综合所有 agent 结果 → 输出 做多 / 观望（长线不做空）
+4. 趋势系数由周线 EMA21/55 定（1.0/0.5/0.3/0），只缩放仓位，EMA 不再作为硬闸门；**ADX 只作仓位系数**
+5. 入场并列：10 周通道突破（stop-limit）与 S1/R1 回调（limit），先到先成交
+6. 长线默认 long-only：弱势币种只规避，不生成空头策略；空头门槛见 `position-mgmt.md`
+7. 综合所有 agent 结果 → 输出 做多 / 观望（长线不做空）
 
 **短线模式：**
 1. 综合 technical-analyst + structure-analyst + news-analyst 结果
@@ -185,8 +188,30 @@ sessions_spawn:
   "trend": {
     "direction": "多头",
     "ema_alignment": "EMA21 > EMA55 > EMA200",
+    "ema21": 92500,
+    "ema55": 88000,
+    "ema21_slope": "up",
+    "spread_atr": 0.9,
+    "trend_coefficient": 1.0,
+    "price_above_ema200": true,
     "adx": 32,
-    "adx_stage": "趋势明确"
+    "adx_stage": "ADX 系数 1.0；只缩放仓位"
+  },
+  "breakout": {
+    "channel_high_10w": 100000,
+    "channel_low_10w": 88000,
+    "state": "inside",
+    "trigger_long": 100050,
+    "trigger_short": 87950
+  },
+  "trailing": {
+    "long_stop": 94000,
+    "short_stop": 94000
+  },
+  "volatility": {
+    "atr_daily": 3200,
+    "atr_weekly": 6500,
+    "realized_vol_90d": 0.62
   },
   "structure": {
     "wyckoff_phase": "积累阶段",
@@ -207,11 +232,11 @@ sessions_spawn:
     "triggered": 1,
     "details": [
       {"rule": "周线定方向", "status": "pass"},
-      {"rule": "ADX 趋势强度", "status": "pass"}
+      {"rule": "ADX 仓位系数", "status": "pass"}
     ]
   },
   "risk_warnings": [
-    "缩量突破前高，警惕假突破"
+    "缩量突破前高：仅记录与评分，不改变仓位"
   ],
   "full_report_md": "{完整的 Markdown 报告内容}"
 }
@@ -228,7 +253,7 @@ sessions_spawn:
 
 1. **策略结论前置**：报告最前面必须给出 做多/做空/观望 + 置信度
 2. **每条结论有理由**：策略结论中的每条理由必须引用 agent 输出的具体数据
-3. 长线周线分析必须包含 52 根周线 K 线数据
+3. 长线周线分析必须包含 52 根周线 K 线数据、10 周通道高低点、90 日已实现波动率
 4. 铁律对照为长线强制步骤，任何一条触发 → 【风险警示】
 5. 连续触发 3 条以上 → 自动给出"观望"
 6. 短线不做完整铁律对照，以技术面信号为主
